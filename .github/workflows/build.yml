@@ -1,0 +1,132 @@
+name: Build & Package
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            exe_suffix: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            exe_suffix: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe_suffix: ".exe"
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- System dependencies ---
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libturbojpeg0-dev \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install jpeg-turbo
+
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -L -o libjpeg-turbo.exe https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.0/libjpeg-turbo-3.1.0-vc64.exe
+          Start-Process -FilePath .\libjpeg-turbo.exe -ArgumentList '/S','/D=C:\libjpeg-turbo64' -Wait
+          echo "C:\libjpeg-turbo64\bin" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      # --- Python ---
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r app/requirements.txt pyinstaller
+
+      # --- Rust ---
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # --- Build sidecar ---
+      - name: Build PyInstaller sidecar
+        run: pyinstaller alembic-api.spec --noconfirm
+
+      - name: Copy sidecar (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          rm -f "src-tauri/binaries/alembic-api-${{ matrix.target }}"
+          rm -rf src-tauri/binaries/_internal
+          cp -r dist/alembic-api/* src-tauri/binaries/
+          mv "src-tauri/binaries/alembic-api" "src-tauri/binaries/alembic-api-${{ matrix.target }}"
+
+      - name: Copy sidecar (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Remove-Item -Force -ErrorAction SilentlyContinue "src-tauri\binaries\alembic-api-${{ matrix.target }}.exe"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "src-tauri\binaries\_internal"
+          Copy-Item -Recurse -Force "dist\alembic-api\*" "src-tauri\binaries\"
+          Move-Item "src-tauri\binaries\alembic-api.exe" "src-tauri\binaries\alembic-api-${{ matrix.target }}.exe"
+        shell: pwsh
+
+      # --- Build Tauri ---
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build Tauri app
+        run: cargo tauri build
+
+      # --- Upload artifacts ---
+      - name: Upload bundle artifacts (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alembic-linux
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
+
+      - name: Upload bundle artifacts (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alembic-macos
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app
+
+      - name: Upload bundle artifacts (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alembic-windows
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
