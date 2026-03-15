@@ -11,7 +11,7 @@ Alembic Desktop is a Tauri 2 desktop app for sorting/curating image collections.
 Three-layer sidecar architecture:
 
 - **Tauri/Rust shell** (`src-tauri/src/lib.rs`): Spawns the Python sidecar, polls its health endpoint, shows the window once ready, kills sidecar on shutdown.
-- **Python Flask API** (`app/app.py`, port 3001): SQLAlchemy + SQLite (`~/.alembic/alembic.db`), image processing (OpenCV, rawpy, Pillow, TurboJPEG), 384-dim embedding vectors for similarity search. Single-user desktop app (hardcoded user "desktop@localhost").
+- **Python Flask API** (`app/app.py`, port 3001): SQLAlchemy + SQLite (`~/.alembic/alembic.db`), image processing (OpenCV, rawpy, Pillow, TurboJPEG), 384-dim embedding vectors for similarity search. Embeddings are generated locally by resizing each image to 8x16x3 and L2-normalizing the flattened pixel values. Single-user desktop app (hardcoded user "desktop@localhost").
 - **Vanilla JS frontend** (`frontend/`): No framework. Direct DOM manipulation with global state (`currentSessionId`, `currentIdLeft`, `currentIdRight`). Views toggled by showing/hiding `view-*` sections.
 
 Images go through progressive loading: thumbnail → preview → display. RAW formats (DNG, CR2, NEF, ARW) are converted to JPG via rawpy. Media cache lives at `~/.alembic/cache/`.
@@ -25,15 +25,10 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
 # Setup Python environment
 python3 -m venv .venv && source .venv/bin/activate && pip install -r app/requirements.txt pyinstaller
 
-# Build the Python sidecar (required before first run)
-pyinstaller alembic-api.spec --noconfirm
+# Build/rebuild the Python sidecar (required before first run and after any Python changes)
+./scripts/rebuild-sidecar.sh
 
-# Copy sidecar into place (Linux example; adjust target triple for your platform)
-mkdir -p src-tauri/binaries
-cp -r dist/alembic-api/* src-tauri/binaries/
-mv src-tauri/binaries/alembic-api "src-tauri/binaries/alembic-api-$(rustc -vV | sed -n 's/^host: //p')"
-
-# Run in dev mode (hot-reload)
+# Run in dev mode (hot-reload for frontend only; Python changes need sidecar rebuild)
 cargo tauri dev
 
 # Build production bundles (Linux .deb/.AppImage, macOS .dmg/.app, Windows .msi/.exe)

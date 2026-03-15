@@ -27,11 +27,18 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install Python dependencies
-pip install -r app/requirements.txt
+pip install -r app/requirements.txt pyinstaller
 
-# Start in dev mode (hot-reloads frontend + sidecar)
+# Build the Python sidecar (required before first run and after any Python changes)
+./scripts/rebuild-sidecar.sh
+
+# Start in dev mode (hot-reloads frontend; Python changes need sidecar rebuild)
 cargo tauri dev
 ```
+
+## How it works
+
+When you load a folder, each image is processed into three cached sizes (thumbnail, preview, display) and a **384-dimensional embedding** is generated locally. The embedding is created by resizing the image to 8x16 pixels (8x16x3 = 384 values), flattening, and L2-normalizing. During sweeping, the app uses L2 distance between embeddings to always show you the most visually similar unreviewed image next to your current one.
 
 ## Usage
 

@@ -1,13 +1,12 @@
 import datetime
-import json
 import logging
 import os
 import random
 import uuid
 from typing import List, Optional
 
+import cv2
 import numpy as np
-import requests
 import utils
 from dotenv import find_dotenv, load_dotenv
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -36,8 +35,6 @@ def create_app():
     load_dotenv(env_file)
 
     app.secret_key = os.getenv("APP_SECRET_KEY", "desktop-secret")
-    app.config["EMBEDDING_ENDPOINT"] = os.getenv("EMBEDDING_ENDPOINT")
-    app.config["EMBEDDINGS_TOKEN"] = os.getenv("EMBEDDING_TOKEN")
     app.config["MODE"] = os.getenv("MODE")
 
     media_folder = os.getenv("MEDIA_FOLDER", os.path.expanduser("~/.alembic/cache"))
@@ -268,28 +265,19 @@ def get_percentage_reviewed(session_id: str) -> int:
         return 0
 
 
-def generate_embedding(image: List) -> np.ndarray:
-    headers = {
-        "Authorization": app.config["EMBEDDINGS_TOKEN"],
-        "Content-Type": "application/json",
-    }
-    payload = json.dumps({"image": image})
-
-    try:
-        response = requests.post(app.config["EMBEDDING_ENDPOINT"], headers=headers, data=payload)
-        if response.status_code == 200:
-            data = json.loads(response.json()["data"])
-            embedding = np.array(data["embedding"])
-            logging.info(
-                f"Response successful: {response.status_code}. Obtained embedding has dimension {embedding.shape}"
-            )
-            return embedding
-        else:
-            logging.error(f"Error: {response.status_code}")
-
-    except requests.exceptions.ConnectionError as e:
-        logging.error(e)
-        logging.error("Not reachable")
+def generate_embedding(image: np.ndarray) -> np.ndarray:
+    """Generate a 384-dim embedding locally by resizing the image to 8x16x3 and normalizing."""
+    img = np.array(image, dtype=np.float32)
+    if img.ndim == 3:
+        thumbnail = cv2.resize(img, (16, 8))  # width=16, height=8 → 8x16x3 = 384
+    else:
+        thumbnail = cv2.resize(img, (16, 8))
+        thumbnail = np.stack([thumbnail] * 3, axis=-1)
+    vec = thumbnail.flatten()
+    norm = np.linalg.norm(vec)
+    if norm > 0:
+        vec = vec / norm
+    return vec
 
 
 @app.route("/")
@@ -504,8 +492,7 @@ def create_session_from_directory():
             display_path, thumbnail_path, preview_path, numpy_img = utils.prepare_image(
                 filepath, output_dir=cache_dir
             )
-            resized = utils.resize_image(numpy_img, 224, 224).tolist()
-            embedding = generate_embedding(resized)
+            embedding = generate_embedding(numpy_img)
             add_embedding(str(session.id), thumbnail_path, preview_path, display_path, filepath, embedding)
             count += 1
         except Exception as e:
