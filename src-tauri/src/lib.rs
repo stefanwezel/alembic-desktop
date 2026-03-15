@@ -59,6 +59,7 @@ pub fn run() {
                 }
                 if ready {
                     println!("API ready, showing window");
+                    let _ = window_clone.eval("if (typeof loadOverview === 'function') loadOverview();");
                 } else {
                     eprintln!("API failed to become ready within 10s, showing window anyway");
                 }
