@@ -1,0 +1,49 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Alembic Desktop is a Tauri 2 desktop app for sorting/curating image collections. Users select a folder of images, sweep through them side-by-side (keep or discard), then download their sorted set. It uses image embeddings for similarity-based navigation.
+
+## Architecture
+
+Three-layer sidecar architecture:
+
+- **Tauri/Rust shell** (`src-tauri/src/lib.rs`): Spawns the Python sidecar, polls its health endpoint, shows the window once ready, kills sidecar on shutdown.
+- **Python Flask API** (`app/app.py`, port 3001): SQLAlchemy + SQLite (`~/.alembic/alembic.db`), image processing (OpenCV, rawpy, Pillow, TurboJPEG), 384-dim embedding vectors for similarity search. Single-user desktop app (hardcoded user "desktop@localhost").
+- **Vanilla JS frontend** (`frontend/`): No framework. Direct DOM manipulation with global state (`currentSessionId`, `currentIdLeft`, `currentIdRight`). Views toggled by showing/hiding `view-*` sections.
+
+Images go through progressive loading: thumbnail → preview → display. RAW formats (DNG, CR2, NEF, ARW) are converted to JPG via rawpy. Media cache lives at `~/.alembic/cache/`.
+
+## Development Commands
+
+```bash
+# Setup Python environment
+python3 -m venv .venv && source .venv/bin/activate && pip install -r app/requirements.txt
+
+# Run in dev mode (hot-reload)
+cargo tauri dev
+
+# Build production bundles (Linux .deb/.AppImage, macOS .dmg/.app, Windows .msi/.exe)
+./scripts/build.sh
+
+# Run Python unit tests
+pytest tests/unit/
+
+# Run a single test
+pytest tests/unit/test_utils.py::test_load_jpg
+
+# Format Python code
+black --line-length 120 app/
+
+# Format Rust code
+cargo fmt -p alembic-desktop-lib
+```
+
+## Key Configuration
+
+- `pyproject.toml`: Black formatter, 120-char line length
+- `tauri.conf.json`: Window config (1400x900), CSP allowing localhost:3001, frontend served from `../frontend`
+- `alembic-api.spec`: PyInstaller spec with platform-specific TurboJPEG bundling and hidden imports
+- `LOG_LEVEL` env var controls Python logging level (default: ERROR)
