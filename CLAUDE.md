@@ -19,8 +19,19 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
 ## Development Commands
 
 ```bash
+# Prerequisites: Rust (via rustup) and Python 3.12+
+# If cargo is not in PATH, run: source ~/.cargo/env
+
 # Setup Python environment
-python3 -m venv .venv && source .venv/bin/activate && pip install -r app/requirements.txt
+python3 -m venv .venv && source .venv/bin/activate && pip install -r app/requirements.txt pyinstaller
+
+# Build the Python sidecar (required before first run)
+pyinstaller alembic-api.spec --noconfirm
+
+# Copy sidecar into place (Linux example; adjust target triple for your platform)
+mkdir -p src-tauri/binaries
+cp -r dist/alembic-api/* src-tauri/binaries/
+mv src-tauri/binaries/alembic-api "src-tauri/binaries/alembic-api-$(rustc -vV | sed -n 's/^host: //p')"
 
 # Run in dev mode (hot-reload)
 cargo tauri dev
