@@ -11,7 +11,7 @@ Alembic Desktop is a Tauri 2 desktop app for sorting/curating image collections.
 Three-layer sidecar architecture:
 
 - **Tauri/Rust shell** (`src-tauri/src/lib.rs`): Spawns the Python sidecar, polls its health endpoint, shows the window once ready, kills sidecar on shutdown.
-- **Python Flask API** (`app/app.py`, port 3001): SQLAlchemy + SQLite (`~/.alembic/alembic.db`), image processing (OpenCV, rawpy, Pillow, TurboJPEG), 384-dim embedding vectors for similarity search. Embeddings are generated locally by resizing each image to 8x16x3 and L2-normalizing the flattened pixel values. Single-user desktop app (hardcoded user "desktop@localhost").
+- **Python Flask API** (`app/app.py`, port 3001): SQLAlchemy + SQLite (`~/.alembic/alembic.db`), image processing (OpenCV, rawpy, Pillow, TurboJPEG), 384-dim embedding vectors for similarity search. Embeddings are generated locally using an EfficientNet B0 ONNX model (16MB), producing 384-dim L2-normalized vectors for similarity search. No PyTorch dependency; post-processing uses numpy/cv2 only. Single-user desktop app (hardcoded user "desktop@localhost").
 - **Vanilla JS frontend** (`frontend/`): No framework. Direct DOM manipulation with global state (`currentSessionId`, `currentIdLeft`, `currentIdRight`). Views toggled by showing/hiding `view-*` sections.
 
 Images go through progressive loading: thumbnail → preview → display. RAW formats (DNG, CR2, NEF, ARW) are converted to JPG via rawpy. Media cache lives at `~/.alembic/cache/`.

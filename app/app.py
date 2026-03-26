@@ -2,11 +2,13 @@ import datetime
 import logging
 import os
 import random
+import sys
 import uuid
 from typing import List, Optional
 
 import cv2
 import numpy as np
+import onnxruntime as ort
 import utils
 from dotenv import find_dotenv, load_dotenv
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -19,6 +21,15 @@ log_level = os.getenv("LOG_LEVEL", "ERROR").upper()
 logging.basicConfig(level=log_level)
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".dng", ".png", ".tiff", ".tif", ".cr2", ".nef", ".arw"}
+
+
+def _get_onnx_model_path() -> str:
+    """Resolve the ONNX model path for both dev and PyInstaller frozen modes."""
+    if getattr(sys, "frozen", False):
+        base = sys._MEIPASS
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, "onnx_checkpoints", "efficientnet_b0.onnx")
 
 
 def create_app():
@@ -44,6 +55,13 @@ def create_app():
     db_path = os.path.expanduser("~/.alembic/alembic.db")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+
+    model_path = _get_onnx_model_path()
+    sess_options = ort.SessionOptions()
+    sess_options.inter_op_num_threads = 1
+    sess_options.intra_op_num_threads = 2
+    app.config["ONNX_SESSION"] = ort.InferenceSession(model_path, sess_options=sess_options)
+    logging.info(f"ONNX model loaded from {model_path}")
 
     return app
 
@@ -97,6 +115,15 @@ class Embedding(db.Model):
 
     def __repr__(self) -> str:
         return f"Embedding('{self.display_path}', '{self.download_path}', '{self.session_id}', '{self.status}')"
+
+
+class AppMetadata(db.Model):
+    __tablename__ = "app_metadata"
+    key: str = db.Column(db.String(64), primary_key=True)
+    value: str = db.Column(db.String(255), nullable=False)
+
+
+CURRENT_SCHEMA_VERSION = "2"
 
 
 def add_user(email: str, nickname="") -> User:
@@ -265,15 +292,42 @@ def get_percentage_reviewed(session_id: str) -> int:
         return 0
 
 
+def preprocess_for_onnx(image: np.ndarray) -> np.ndarray:
+    """Preprocess an image for EfficientNet B0 ONNX inference.
+
+    Input: HWC BGR uint8 numpy array (any resolution).
+    Output: (1, 3, 224, 224) float32 array, ImageNet-normalized.
+    """
+    img = cv2.resize(image, (224, 224))
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = img.astype(np.float32) / 255.0
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    img = (img - mean) / std
+    img = img.transpose((2, 0, 1))
+    img = np.expand_dims(img, axis=0)
+    return img
+
+
+def process_onnx_embedding(embedding: np.ndarray) -> np.ndarray:
+    """Post-process ONNX output to 384-dim vector using numpy/cv2.
+
+    Replicates the torch-based process_embedding() from embedding_api without the torch dependency.
+    """
+    embedding = np.transpose(embedding, (0, 2, 1, 3))
+    slice_2d = embedding[0, 0, :, :]
+    resized = cv2.resize(slice_2d, (1, 384), interpolation=cv2.INTER_LINEAR)
+    vec = resized[:, 0]
+    return vec.astype(np.float32)
+
+
 def generate_embedding(image: np.ndarray) -> np.ndarray:
-    """Generate a 384-dim embedding locally by resizing the image to 8x16x3 and normalizing."""
-    img = np.array(image, dtype=np.float32)
-    if img.ndim == 3:
-        thumbnail = cv2.resize(img, (16, 8))  # width=16, height=8 → 8x16x3 = 384
-    else:
-        thumbnail = cv2.resize(img, (16, 8))
-        thumbnail = np.stack([thumbnail] * 3, axis=-1)
-    vec = thumbnail.flatten()
+    """Generate a 384-dim embedding using EfficientNet B0 ONNX model."""
+    ort_session = app.config["ONNX_SESSION"]
+    preprocessed = preprocess_for_onnx(image)
+    input_name = ort_session.get_inputs()[0].name
+    ort_output = ort_session.run(None, {input_name: preprocessed})[0]
+    vec = process_onnx_embedding(ort_output)
     norm = np.linalg.norm(vec)
     if norm > 0:
         vec = vec / norm
@@ -565,6 +619,24 @@ def rename_session(session_id):
 
 with app.app_context():
     db.create_all()
+
+    # Migrate incompatible embeddings when schema version changes
+    try:
+        version_row = AppMetadata.query.filter_by(key="schema_version").first()
+        if version_row is None or version_row.value != CURRENT_SCHEMA_VERSION:
+            logging.warning("Incompatible embedding format detected. Clearing existing sessions.")
+            Embedding.query.delete()
+            Session.query.delete()
+            db.session.commit()
+            if version_row is None:
+                db.session.add(AppMetadata(key="schema_version", value=CURRENT_SCHEMA_VERSION))
+            else:
+                version_row.value = CURRENT_SCHEMA_VERSION
+            db.session.commit()
+            logging.info(f"Database migrated to schema version {CURRENT_SCHEMA_VERSION}.")
+    except Exception:
+        pass  # Table might not exist yet on first run
+
     try:
         add_user("desktop@localhost", "Desktop User")
     except Exception:

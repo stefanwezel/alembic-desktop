@@ -32,7 +32,7 @@ a = Analysis(
     ['app/run_server.py'],
     pathex=['app'],
     binaries=turbojpeg_binaries,
-    datas=[],
+    datas=[('app/onnx_checkpoints/efficientnet_b0.onnx', 'onnx_checkpoints')],
     hiddenimports=[
         'sqlalchemy.dialects.sqlite',
         'sqlalchemy.dialects.sqlite.pysqlite',
@@ -46,6 +46,7 @@ a = Analysis(
         'PIL.TiffImagePlugin',
         'flask_cors',
         'flask_sqlalchemy',
+        'onnxruntime',
         'exifread',
         'requests',
         'dotenv',
