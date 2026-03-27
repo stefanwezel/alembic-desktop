@@ -38,7 +38,7 @@ cargo tauri dev
 
 ## How it works
 
-When you load a folder, each image is processed into three cached sizes (thumbnail, preview, display) and a **384-dimensional embedding** is generated locally. The embedding is created by resizing the image to 8x16 pixels (8x16x3 = 384 values), flattening, and L2-normalizing. During sweeping, the app uses L2 distance between embeddings to always show you the most visually similar unreviewed image next to your current one.
+When you load a folder, each image is processed into three cached sizes (thumbnail, preview, display) and a **384-dimensional embedding** is generated locally using an EfficientNet B0 model via ONNX Runtime. During sweeping, the app uses L2 distance between embeddings to always show you the most visually similar unreviewed image next to your current one.
 
 ## Usage
 

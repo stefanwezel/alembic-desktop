@@ -14,8 +14,6 @@ from dotenv import find_dotenv, load_dotenv
 from flask import Flask, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.exc import NoResultFound
-from werkzeug.utils import secure_filename
 
 log_level = os.getenv("LOG_LEVEL", "ERROR").upper()
 logging.basicConfig(level=log_level)
@@ -347,7 +345,7 @@ def serve_image():
     embedding = get_embedding(img_id)
 
     if embedding.preview_path == "endofline":
-        return None
+        return jsonify({"error": "end_of_line"}), 404
 
     if version == "thumbnail":
         return send_file(embedding.thumbnail_path)
@@ -357,6 +355,7 @@ def serve_image():
         return send_file(embedding.display_path)
     else:
         logging.error(f"Invalid image version {version} requested.")
+        return jsonify({"error": "invalid_version"}), 400
 
 
 @app.route("/like_image", methods=["POST"])
@@ -517,11 +516,6 @@ def overview():
 @app.route("/completed", methods=["GET"])
 def completed():
     return jsonify({"status": "completed"})
-
-
-@app.route("/upload_form/<string:session_id>")
-def upload_form(session_id: str):
-    return jsonify({"session_id": session_id, "status": "ready_for_upload"})
 
 
 @app.route("/create_session_from_directory", methods=["POST"])

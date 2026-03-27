@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 from typing import List, Optional, Tuple
 from zipfile import ZipFile
 
@@ -8,9 +7,8 @@ import cv2
 import exifread
 import numpy as np
 import rawpy
-from PIL import ExifTags, Image
-from skimage import io
-from turbojpeg import TJPF_BGR, TJPF_RGB, TurboJPEG
+from PIL import Image
+from turbojpeg import TJPF_BGR, TurboJPEG
 
 try:
     turbo_jpeg = TurboJPEG()
@@ -223,11 +221,3 @@ def fit_image_dimensions(image: np.ndarray, max_height: int = 1000, max_width: i
     return new_height, new_width
 
 
-def extract_image_paths_from_url(url):
-    """ Extracts the left and right image paths from the input string. """
-    match = re.search(r"left=(.*?)/right=(.*)", url)
-    if match:
-        left_image_path = match.group(1)
-        right_image_path = match.group(2)
-        return left_image_path, right_image_path
-    return None, None

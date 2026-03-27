@@ -179,6 +179,7 @@ async function dropSession(sessionId) {
 }
 
 function renameSession(sessionId) {
+  if (document.querySelector(".popup-overlay")) return;
   const overlay = document.createElement("div");
   overlay.className = "popup-overlay";
   const popup = document.createElement("div");
@@ -503,6 +504,10 @@ async function updateImages(route, sessionId, position, clickedImageId, otherIma
         otherImageId: otherImageId,
       }),
     });
+    if (!res.ok) {
+      console.error(`API error: ${res.status}`);
+      return;
+    }
     const data = await res.json();
     if (!data.redirect) {
       console.log("No redirect provided.");

@@ -53,3 +53,9 @@ cargo fmt -p alembic-desktop-lib
 - `tauri.conf.json`: Window config (1400x900), CSP allowing localhost:3001, frontend served from `../frontend`
 - `alembic-api.spec`: PyInstaller spec with platform-specific TurboJPEG bundling and hidden imports
 - `LOG_LEVEL` env var controls Python logging level (default: ERROR)
+
+## Keyboard Shortcuts (Decision View)
+
+- Left image: D (like), S (continue from), F (drop)
+- Right image: K (like), L (continue from), J (drop)
+- R: Reset zoom on both images
