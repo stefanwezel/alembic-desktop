@@ -149,8 +149,8 @@ jobs:
           draft: true
           generate_release_notes: true
           files: |
-            artifacts/alembic-linux/*.deb
-            artifacts/alembic-linux/*.AppImage
-            artifacts/alembic-macos/*.dmg
-            artifacts/alembic-windows/*.msi
-            artifacts/alembic-windows/*.exe
+            artifacts/alembic-linux/**/*.deb
+            artifacts/alembic-linux/**/*.AppImage
+            artifacts/alembic-macos/**/*.dmg
+            artifacts/alembic-windows/**/*.msi
+            artifacts/alembic-windows/**/*.exe
