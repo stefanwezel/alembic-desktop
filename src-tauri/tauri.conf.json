@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicklasbekkevold/tauri-schema/refs/heads/v2/schema.json",
   "productName": "Alembic",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "identifier": "com.alembic.app",
   "build": {
     "frontendDist": "../frontend",
