@@ -84,18 +84,14 @@ jobs:
         run: |
           mkdir -p src-tauri/binaries
           rm -f "src-tauri/binaries/alembic-api-${{ matrix.target }}"
-          rm -rf src-tauri/binaries/_internal
-          cp -r dist/alembic-api/* src-tauri/binaries/
-          mv "src-tauri/binaries/alembic-api" "src-tauri/binaries/alembic-api-${{ matrix.target }}"
+          cp "dist/alembic-api" "src-tauri/binaries/alembic-api-${{ matrix.target }}"
 
       - name: Copy sidecar (Windows)
         if: runner.os == 'Windows'
         run: |
           New-Item -ItemType Directory -Force -Path "src-tauri\binaries" | Out-Null
           Remove-Item -Force -ErrorAction SilentlyContinue "src-tauri\binaries\alembic-api-${{ matrix.target }}.exe"
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "src-tauri\binaries\_internal"
-          Copy-Item -Recurse -Force "dist\alembic-api\*" "src-tauri\binaries\"
-          Move-Item "src-tauri\binaries\alembic-api.exe" "src-tauri\binaries\alembic-api-${{ matrix.target }}.exe"
+          Copy-Item "dist\alembic-api.exe" "src-tauri\binaries\alembic-api-${{ matrix.target }}.exe"
         shell: pwsh
 
       # --- Build Tauri ---
