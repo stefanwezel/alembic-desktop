@@ -56,11 +56,8 @@ rm -f "$BINARIES_DIR/$SIDECAR_NAME"
 # Remove old _internal directory if present
 rm -rf "$BINARIES_DIR/_internal"
 
-# Copy the entire onedir output (binary + _internal/) into binaries/
-cp -r dist/alembic-api/* "$BINARIES_DIR/"
-
-# Rename the main binary to include the target triple
-mv "$BINARIES_DIR/alembic-api${EXE_SUFFIX}" "$BINARIES_DIR/$SIDECAR_NAME"
+# Copy the onefile binary into binaries/
+cp "dist/alembic-api${EXE_SUFFIX}" "$BINARIES_DIR/$SIDECAR_NAME"
 
 echo "==> Sidecar ready: $BINARIES_DIR/$SIDECAR_NAME"
 

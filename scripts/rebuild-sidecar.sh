@@ -52,8 +52,6 @@ mkdir -p "$BINARIES_DIR"
 
 echo "==> Copying sidecar to $BINARIES_DIR..."
 rm -f "$BINARIES_DIR/$SIDECAR_NAME"
-rm -rf "$BINARIES_DIR/_internal"
-cp -r dist/alembic-api/* "$BINARIES_DIR/"
-mv "$BINARIES_DIR/alembic-api${EXE_SUFFIX}" "$BINARIES_DIR/$SIDECAR_NAME"
+cp "dist/alembic-api${EXE_SUFFIX}" "$BINARIES_DIR/$SIDECAR_NAME"
 
 echo "==> Sidecar ready: $BINARIES_DIR/$SIDECAR_NAME"

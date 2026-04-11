@@ -35,7 +35,11 @@ function renderOverview(data) {
   // New session button
   const newDiv = document.createElement("div");
   newDiv.className = "session-container";
-  newDiv.innerHTML = `<button class="new-session-button" onclick="newSession()">🆕 New session</button>`;
+  const newBtn = document.createElement("button");
+  newBtn.className = "new-session-button";
+  newBtn.textContent = "\u{1F195} New session";
+  newBtn.addEventListener("click", () => newSession());
+  newDiv.appendChild(newBtn);
   container.appendChild(newDiv);
 
   for (const session of data.sessions) {
@@ -52,21 +56,26 @@ function renderOverview(data) {
         ${thumbnailsHtml}
         <div class="session-progress">
           <span id="sessionName${session.id}">${escapeHtml(session.name)}</span>
-          <button class="rename-session-button" onclick="renameSession('${session.id}')">🔧</button>
+          <button class="rename-session-button" data-action="rename" data-session-id="${session.id}">🔧</button>
         </div>
         <div class="session-progress">
           <span>Reviewed:</span>
           <progress id="progressBar${session.id}" value="${session.progress}" max="100"></progress>
         </div>
         <button class="open-session-button" id="openSessionButton${session.id}"
-          onclick="openSession('${session.id}', ${session.progress})">📁 Open session</button>
+          data-action="open" data-session-id="${session.id}" data-progress="${session.progress}">📁 Open session</button>
         <button class="download-button" id="downloadButton${session.id}"
-          onclick="downloadSession('${session.id}', '${escapeHtml(session.name)}')">💾 Download files</button>
+          data-action="download" data-session-id="${session.id}" data-session-name="${escapeHtml(session.name)}">💾 Download files</button>
         <button class="drop-session-button" id="dropSessionButton${session.id}"
-          onclick="dropSession('${session.id}')">🗑️ Drop</button>
+          data-action="drop" data-session-id="${session.id}">🗑️ Drop</button>
       </div>
     `;
     container.appendChild(div);
+
+    div.querySelector('[data-action="rename"]').addEventListener("click", () => renameSession(session.id));
+    div.querySelector('[data-action="open"]').addEventListener("click", () => openSession(session.id, session.progress));
+    div.querySelector('[data-action="download"]').addEventListener("click", () => downloadSession(session.id, session.name));
+    div.querySelector('[data-action="drop"]').addEventListener("click", () => dropSession(session.id));
 
     if (session.progress >= 100) {
       document.getElementById(`progressBar${session.id}`).classList.add("complete");
@@ -189,12 +198,14 @@ function renameSession(sessionId) {
     <h3>Rename Session</h3>
     <input type="text" id="newSessionName" placeholder="Enter new name" value="${escapeHtml(currentName)}">
     <div class="popup-buttons">
-      <button class="cancel" onclick="closePopup()">Cancel</button>
-      <button onclick="submitNewSessionName('${sessionId}')">Save</button>
+      <button class="cancel" id="popup-cancel">Cancel</button>
+      <button id="popup-save">Save</button>
     </div>
   `;
   overlay.appendChild(popup);
   document.body.appendChild(overlay);
+  document.getElementById("popup-cancel").addEventListener("click", () => closePopup());
+  document.getElementById("popup-save").addEventListener("click", () => submitNewSessionName(sessionId));
   const inputField = document.getElementById("newSessionName");
   inputField.focus();
   inputField.setSelectionRange(currentName.length, currentName.length);
@@ -555,5 +566,9 @@ function escapeHtml(str) {
 // ─── Init ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("browse-button").addEventListener("click", () => browseDirectory());
+  document.getElementById("load-images-button").addEventListener("click", () => createSessionFromDirectory());
+  document.getElementById("pause-session-button").addEventListener("click", () => pauseSession());
+  document.getElementById("return-overview-button").addEventListener("click", () => { showView("overview"); loadOverview(); });
   loadOverview();
 });

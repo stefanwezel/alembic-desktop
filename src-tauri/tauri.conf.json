@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../frontend",
     "devUrl": "http://localhost:8080",
-    "beforeDevCommand": "python3 -m http.server 8080 --directory frontend",
+    "beforeDevCommand": "fuser -k 8080/tcp 2>/dev/null; fuser -k 3001/tcp 2>/dev/null; python3 -m http.server 8080 --directory frontend",
     "beforeBuildCommand": ""
   },
   "app": {

@@ -22,8 +22,8 @@
     <div class="page-wrapper">
       <div class="upload-container">
         <input type="text" id="directory-path" class="browse-button" placeholder="/path/to/photos">
-        <button type="button" id="browse-button" class="upload-button" onclick="browseDirectory()" style="display:none;">Browse</button>
-        <button type="button" class="upload-button" onclick="createSessionFromDirectory()">Load Images</button>
+        <button type="button" id="browse-button" class="upload-button" style="display:none;">Browse</button>
+        <button type="button" id="load-images-button" class="upload-button">Load Images</button>
       </div>
     </div>
     <div class="overlay" id="upload-overlay">
@@ -42,14 +42,14 @@
         <img id="img-right" alt="Right Image">
       </div>
     </div>
-    <button class="return-overview-button" onclick="pauseSession()">⏸️ Pause session</button>
+    <button class="return-overview-button" id="pause-session-button">⏸️ Pause session</button>
   </section>
 
   <!-- Completed View -->
   <section id="view-completed" style="display:none;">
     <div class="simple-text-page">
       <h1>☑️ Looks like you're done!</h1>
-      <button class="transparent-text-button" onclick="showView('overview'); loadOverview()">Return to session overview</button>
+      <button class="transparent-text-button" id="return-overview-button">Return to session overview</button>
     </div>
   </section>
 
