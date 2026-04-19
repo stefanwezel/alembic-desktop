@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta http-equiv="Pragma" content="no-cache">
   <title>Alembic</title>
   <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="css/styles.css">
@@ -11,10 +13,10 @@
 
   <!-- Overview View -->
   <section id="view-overview" style="display:none;">
-    <div class="page-wrapper fixed-top">
+    <div class="app-toolbar">
       <h1 class="sessions-header">Sessions</h1>
-      <div id="sessions-list"></div>
     </div>
+    <div class="sessions-scroll-area" id="sessions-list"></div>
   </section>
 
   <!-- Upload View -->
@@ -42,13 +44,22 @@
         <img id="img-right" alt="Right Image">
       </div>
     </div>
-    <button class="return-overview-button" id="pause-session-button">⏸️ Pause session</button>
+    <button class="return-overview-button" id="pause-session-button">
+      <svg class="icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="4" height="12" rx="1"/><rect x="9" y="2" width="4" height="12" rx="1"/></svg>
+      Pause
+    </button>
   </section>
 
   <!-- Completed View -->
   <section id="view-completed" style="display:none;">
     <div class="simple-text-page">
-      <h1>☑️ Looks like you're done!</h1>
+      <div class="completed-icon">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="3" fill="none"/>
+          <path d="M14 24l7 7 13-13" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1>Looks like you're done!</h1>
       <button class="transparent-text-button" id="return-overview-button">Return to session overview</button>
     </div>
   </section>

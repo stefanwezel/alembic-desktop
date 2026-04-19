@@ -1,5 +1,21 @@
 const API_BASE = "http://localhost:3001";
 
+// ─── Icons ────────────────────────────────────────────────────────────────────
+
+function icon(name, size = 16) {
+  const icons = {
+    plus: `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a1 1 0 011 1v4h4a1 1 0 110 2H9v4a1 1 0 11-2 0V9H3a1 1 0 010-2h4V3a1 1 0 011-1z"/></svg>`,
+    edit: `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor"><path d="M11.5 1.5a1.5 1.5 0 012.12 2.12L5.83 11.4l-2.83.71.71-2.83L11.5 1.5zM2 13.5h12a.5.5 0 010 1H2a.5.5 0 010-1z"/></svg>`,
+    play: `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5a.5.5 0 01.77-.42l9 5.5a.5.5 0 010 .84l-9 5.5A.5.5 0 014 13.5v-11z"/></svg>`,
+    export: `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor"><path d="M8.75 1a.75.75 0 00-1.5 0v6.59L5.3 5.64a.75.75 0 00-1.1 1.02l3.25 3.5a.75.75 0 001.1 0l3.25-3.5a.75.75 0 00-1.1-1.02L8.75 7.59V1zM1.75 9a.75.75 0 00-.75.75v3.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0015 13.25v-3.5a.75.75 0 00-1.5 0v3.5a.25.25 0 01-.25.25H2.75a.25.25 0 01-.25-.25v-3.5A.75.75 0 001.75 9z"/></svg>`,
+    trash: `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor"><path d="M5.5 1a.5.5 0 00-.5.5V2H2.5a.5.5 0 000 1h.5l.7 10.5a1.5 1.5 0 001.49 1.5h5.62a1.5 1.5 0 001.49-1.5L13 3h.5a.5.5 0 000-1H11v-.5a.5.5 0 00-.5-.5h-5zM6 2V1.5h4V2H6zm-2 1h8l-.7 10.5a.5.5 0 01-.49.5H5.19a.5.5 0 01-.49-.5L4 3z"/></svg>`,
+    check: `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>`,
+    "chevron-left": `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor"><path d="M10.35 3.15a.5.5 0 010 .7L6.21 8l4.14 4.15a.5.5 0 01-.7.7l-4.5-4.5a.5.5 0 010-.7l4.5-4.5a.5.5 0 01.7 0z"/></svg>`,
+    "chevron-right": `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor"><path d="M5.65 3.15a.5.5 0 01.7 0l4.5 4.5a.5.5 0 010 .7l-4.5 4.5a.5.5 0 01-.7-.7L9.79 8 5.65 3.85a.5.5 0 010-.7z"/></svg>`,
+  };
+  return icons[name] || "";
+}
+
 // ─── View Management ───────────────────────────────────────────────────────────
 
 function showView(name) {
@@ -37,7 +53,7 @@ function renderOverview(data) {
   newDiv.className = "session-container";
   const newBtn = document.createElement("button");
   newBtn.className = "new-session-button";
-  newBtn.textContent = "\u{1F195} New session";
+  newBtn.innerHTML = icon("plus") + " New session";
   newBtn.addEventListener("click", () => newSession());
   newDiv.appendChild(newBtn);
   container.appendChild(newDiv);
@@ -56,18 +72,20 @@ function renderOverview(data) {
         ${thumbnailsHtml}
         <div class="session-progress">
           <span id="sessionName${session.id}">${escapeHtml(session.name)}</span>
-          <button class="rename-session-button" data-action="rename" data-session-id="${session.id}">🔧</button>
+          <button class="rename-session-button" data-action="rename" data-session-id="${session.id}">${icon("edit", 14)}</button>
         </div>
         <div class="session-progress">
           <span>Reviewed:</span>
           <progress id="progressBar${session.id}" value="${session.progress}" max="100"></progress>
         </div>
-        <button class="open-session-button" id="openSessionButton${session.id}"
-          data-action="open" data-session-id="${session.id}" data-progress="${session.progress}">📁 Open session</button>
-        <button class="download-button" id="downloadButton${session.id}"
-          data-action="download" data-session-id="${session.id}" data-session-name="${escapeHtml(session.name)}">💾 Download files</button>
-        <button class="drop-session-button" id="dropSessionButton${session.id}"
-          data-action="drop" data-session-id="${session.id}">🗑️ Drop</button>
+        <div class="session-actions">
+          <button class="open-session-button" id="openSessionButton${session.id}"
+            data-action="open" data-session-id="${session.id}" data-progress="${session.progress}">${icon("play")} Resume</button>
+          <button class="download-button" id="downloadButton${session.id}"
+            data-action="download" data-session-id="${session.id}" data-session-name="${escapeHtml(session.name)}">${icon("export")} Export</button>
+          <button class="drop-session-button" id="dropSessionButton${session.id}"
+            data-action="drop" data-session-id="${session.id}">${icon("trash")} Drop</button>
+        </div>
       </div>
     `;
     container.appendChild(div);
@@ -155,7 +173,7 @@ async function openSession(sessionId, progress) {
 async function downloadSession(sessionId, sessionName) {
   const btn = document.getElementById(`downloadButton${sessionId}`);
   btn.disabled = true;
-  btn.innerHTML = "⏳ Preparing Download...";
+  btn.innerHTML = "Preparing...";
   btn.classList.add("loading");
   try {
     const res = await fetch(`${API_BASE}/download?session_id=${sessionId}`);
@@ -173,7 +191,7 @@ async function downloadSession(sessionId, sessionName) {
   } catch (e) {
     console.error("Download failed:", e);
     btn.disabled = false;
-    btn.innerHTML = "💾 Download files";
+    btn.innerHTML = icon("export") + " Export";
     btn.classList.remove("loading");
   }
 }
@@ -365,7 +383,7 @@ function setupImageControls(side, img, clickedId, otherId) {
 
   // Like button (💜)
   const selectButtonLike = document.createElement("button");
-  selectButtonLike.textContent = "💜";
+  selectButtonLike.innerHTML = icon("check", 20);
   selectButtonLike.classList.add("select-button-top");
   wrapper.appendChild(selectButtonLike);
   selectButtonLike.onclick = () => {
@@ -378,10 +396,10 @@ function setupImageControls(side, img, clickedId, otherId) {
   selectButtonContinueFrom.classList.add("select-button-side");
   if (side === "left") {
     selectButtonContinueFrom.classList.add("left-side");
-    selectButtonContinueFrom.textContent = "⬅️";
+    selectButtonContinueFrom.innerHTML = icon("chevron-left", 20);
   } else {
     selectButtonContinueFrom.classList.add("right-side");
-    selectButtonContinueFrom.textContent = "➡️";
+    selectButtonContinueFrom.innerHTML = icon("chevron-right", 20);
   }
   wrapper.appendChild(selectButtonContinueFrom);
   selectButtonContinueFrom.onclick = () => {
@@ -391,7 +409,7 @@ function setupImageControls(side, img, clickedId, otherId) {
 
   // Drop button (🗑️)
   const selectButtonDrop = document.createElement("button");
-  selectButtonDrop.textContent = "🗑️";
+  selectButtonDrop.innerHTML = icon("trash", 20);
   selectButtonDrop.classList.add("select-button-bottom");
   wrapper.appendChild(selectButtonDrop);
   selectButtonDrop.onclick = () => {
@@ -495,7 +513,7 @@ async function renderImage(side, imgId) {
       console.error(`Error rendering image for ${imgId}:`, error);
       img.parentElement.innerHTML = `
         <div class="not-found">
-          <p>🤷 No more images found. Looks like you're done!<br>
+          <p>No more images found. Looks like you're done!<br>
           <span class="small-text">Decide what you want to do with the last image to complete the session.</span></p>
         </div>
       `;

@@ -1,26 +1,489 @@
-body {
-  background: linear-gradient(to bottom, #22052d, #ccb3d1);
-  margin:   0; /* Remove default margins */
-  height:   100vh; /* Full viewport height */
+/* ─── Font Faces ─────────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: "Inter";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("../fonts/Inter-Regular.woff2") format("woff2");
 }
+
+@font-face {
+  font-family: "Inter";
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url("../fonts/Inter-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url("../fonts/Inter-SemiBold.woff2") format("woff2");
+}
+
+/* ─── Design Tokens ──────────────────────────────────────────────────────── */
+
+:root {
+  /* Backgrounds */
+  --color-bg-base:       #1a1a1a;
+  --color-bg-surface:    #242424;
+  --color-bg-elevated:   #2d2d2d;
+  --color-bg-overlay:    rgba(0, 0, 0, 0.7);
+  --color-bg-input:      #1e1e1e;
+  --color-bg-decision:   #0d0d0d;
+
+  /* Borders */
+  --color-border-subtle:  #333333;
+  --color-border-default: #404040;
+  --color-border-focus:   #7B52C4;
+
+  /* Text */
+  --color-text-primary:   #e8e8e8;
+  --color-text-secondary: #999999;
+  --color-text-muted:     #666666;
+
+  /* Accent — dark muted purple for dark theme */
+  --color-accent:         #7B52C4;
+  --color-accent-hover:   #6A45AD;
+  --color-accent-subtle:  rgba(123, 82, 196, 0.12);
+  --color-accent-border:  rgba(123, 82, 196, 0.3);
+
+  /* Semantic */
+  --color-danger:         #cc4444;
+  --color-danger-hover:   #aa3333;
+  --color-success:        #4a9e6a;
+
+  /* Typography */
+  --font-family-ui:   "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-family-mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+
+  --font-size-xs:   0.6875rem;
+  --font-size-sm:   0.75rem;
+  --font-size-base: 0.8125rem;
+  --font-size-md:   0.875rem;
+  --font-size-lg:   1rem;
+  --font-size-xl:   1.25rem;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semi:   600;
+
+  /* Spacing */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+
+  /* Radius */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* Transitions */
+  --transition-fast:   120ms ease;
+  --transition-normal: 200ms ease;
+}
+
+/* ─── Reset / Base ───────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-base);
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Icon Utility ───────────────────────────────────────────────────────── */
+
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* ─── Layout: Toolbar ────────────────────────────────────────────────────── */
+
+.app-toolbar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.sessions-header {
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semi);
+  color: var(--color-text-primary);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.sessions-scroll-area {
+  overflow-y: auto;
+  height: calc(100vh - 48px);
+  padding: var(--space-4) var(--space-6);
+}
+
+/* ─── Layout: Page Wrapper ───────────────────────────────────────────────── */
+
+.page-wrapper {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ─── Session Cards ──────────────────────────────────────────────────────── */
+
+.session-container {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+  transition: border-color var(--transition-fast);
+}
+
+.session-container:hover {
+  border-color: var(--color-border-default);
+}
+
+.session-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* ─── Thumbnails ─────────────────────────────────────────────────────────── */
+
+.thumbnail-img {
+  height: 40px;
+  width: auto;
+  max-width: 100%;
+  max-height: 60px;
+  padding: 1px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-subtle);
+  object-fit: cover;
+}
+
+/* ─── Session Buttons ────────────────────────────────────────────────────── */
+
+.new-session-button {
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  transition: color var(--transition-fast);
+}
+
+.new-session-button:hover {
+  color: var(--color-accent);
+}
+
+.open-session-button,
+.download-button,
+.drop-session-button {
+  background: transparent;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.open-session-button:hover,
+.download-button:hover,
+.drop-session-button:hover {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-default);
+}
+
+/* Complete state — static accent, no pulsation */
+.open-session-button.complete,
+.download-button.complete {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+
+.open-session-button.complete:hover,
+.download-button.complete:hover {
+  background: rgba(123, 82, 196, 0.2);
+}
+
+.drop-session-button.complete {
+  border-color: rgba(204, 68, 68, 0.3);
+  color: var(--color-danger);
+  background: rgba(204, 68, 68, 0.08);
+}
+
+.drop-session-button.complete:hover {
+  background: rgba(204, 68, 68, 0.15);
+}
+
+.loading {
+  background: var(--color-bg-elevated) !important;
+  color: var(--color-text-muted) !important;
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Rename button — icon-only */
+.rename-session-button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.rename-session-button:hover {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+}
+
+.rename-session-button:active {
+  background: var(--color-border-subtle);
+}
+
+/* ─── Progress Bar ───────────────────────────────────────────────────────── */
+
+.session-progress {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  gap: var(--space-2);
+}
+
+.session-progress span {
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.session-progress progress {
+  width: 160px;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--color-bg-base);
+}
+
+.session-progress progress::-webkit-progress-bar {
+  background: var(--color-bg-base);
+  border-radius: 2px;
+}
+
+.session-progress progress::-webkit-progress-value {
+  background: var(--color-accent);
+  border-radius: 2px;
+}
+
+.session-progress progress::-moz-progress-bar {
+  background: var(--color-accent);
+  border-radius: 2px;
+}
+
+.session-progress progress.complete::-webkit-progress-value {
+  background: var(--color-accent);
+}
+
+.session-progress progress.complete::-moz-progress-bar {
+  background: var(--color-accent);
+}
+
+/* ─── Upload View ────────────────────────────────────────────────────────── */
+
+.upload-container {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-10) var(--space-8);
+  max-width: 560px;
+  width: 90vw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.browse-button {
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-base);
+  width: 100%;
+  text-align: center;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.browse-button:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 2px var(--color-accent-subtle);
+}
+
+.browse-button::placeholder {
+  color: var(--color-text-muted);
+}
+
+.upload-button {
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-5);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.upload-button:hover {
+  background: var(--color-accent-hover);
+}
+
+/* ─── Upload Overlay & Spinner ───────────────────────────────────────────── */
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg-overlay);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  visibility: hidden;
+}
+
+.progress-text {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-family: var(--font-family-ui);
+}
+
+.spinner {
+  border: 3px solid var(--color-border-subtle);
+  border-top: 3px solid var(--color-accent);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  animation: spin 1s linear infinite;
+  margin-top: var(--space-5);
+  visibility: hidden;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.progress-bar {
+  width: 80%;
+  height: 30px;
+  background-color: var(--color-bg-surface);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-top: var(--space-5);
+}
+
+.progress-bar-inner {
+  height: 100%;
+  width: 0;
+  background-color: var(--color-accent);
+  text-align: center;
+  line-height: 30px;
+  color: #fff;
+  font-family: var(--font-family-ui);
+}
+
+/* ─── Decision View ──────────────────────────────────────────────────────── */
 
 .img-container {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  height: 90vh;
-  padding: 0 2%;
+  height: 100vh;
+  padding: 0 var(--space-2);
+  gap: 2px;
+  background: var(--color-bg-decision);
 }
 
 .img-wrapper {
   position: relative;
-  width: 48%;
-  height: 95vh;
-  max-height: 75vh;
+  width: calc(50% - 1px);
+  height: 100vh;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--color-bg-decision);
 }
 
 .img-container img {
@@ -35,52 +498,33 @@ body {
   cursor: grabbing;
 }
 
-.reset-button {
-  color: white;
-  border: none;
-  position: absolute;
-  bottom: 100px;
-  right: 50px;
-  font-family: 'Hack', monospace;
-  font-size: 0.75em;
-  padding: 2px 5px;
-  border-radius: 2px;
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-.reset-button:hover {
-  background-color: rgba(64, 17, 107, 0.87);
-  cursor: pointer;
-}
-
-.pop-up {
-  animation: flashy-pop-up 0.6s ease-out;
-}
-
-@keyframes flashy-pop-up {
-  0% {
-    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
-  }
-  30% {
-    box-shadow: 0 8px 10px rgba(138, 79, 255, 0.5);
-  }
-  50% {
-    box-shadow: 0 6px 10px rgba(138, 79, 255, 0.8);
-  }
-  100% {
-    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
-  }
-}
-
+/* Decision overlay controls — hidden by default, appear on hover */
 .select-button-bottom,
 .select-button-top,
 .select-button-side {
   position: absolute;
-  background: none;
-  border: none;
-  border-radius: 10%;
-  font-size: 2.5em;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-normal), background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  padding: 0;
+}
+
+.img-wrapper:hover .select-button-bottom,
+.img-wrapper:hover .select-button-top,
+.img-wrapper:hover .select-button-side {
+  opacity: 1;
 }
 
 .select-button-bottom {
@@ -101,60 +545,127 @@ body {
 }
 
 .select-button-side.left-side {
-  left: 0;
+  left: var(--space-2);
 }
 
 .select-button-side.right-side {
-  right: 0;
+  right: var(--space-2);
 }
 
-.select-button-bottom:hover,
-.select-button-top:hover,
+/* Keep button hover — purple accent */
+.select-button-top:hover {
+  background: rgba(123, 82, 196, 0.6);
+  color: #fff;
+  border-color: rgba(123, 82, 196, 0.4);
+}
+
+/* Continue button hover — white tint */
 .select-button-side:hover {
-  background-color: rgba(240, 240, 240, 0.46);
-  cursor: pointer;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
+/* Drop button hover — red tint */
+.select-button-bottom:hover {
+  background: rgba(204, 68, 68, 0.6);
+  color: #fff;
+  border-color: rgba(204, 68, 68, 0.4);
+}
+
+/* Reset zoom — glass button */
+.reset-button {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-xs);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-normal), color var(--transition-fast), background var(--transition-fast);
+}
+
+.img-wrapper:hover .reset-button {
+  opacity: 1;
+}
+
+.reset-button:hover {
+  color: var(--color-text-secondary);
+  background: rgba(0, 0, 0, 0.7);
+}
+
+/* Pause session — glass pill */
+.return-overview-button {
+  position: fixed;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  transition: color var(--transition-fast), background var(--transition-fast);
+  text-decoration: none;
+  z-index: 10;
+}
+
+.return-overview-button:hover {
+  color: var(--color-text-primary);
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* Keep/Drop both buttons */
 .keep-both-button,
 .drop-both-button {
   display: block;
-  width: 10%;
+  width: auto;
   margin: 5px auto;
   text-align: center;
-  font-family: 'Hack', monospace;
-  font-size: 1em;
-  padding: 5px 10px;
-  border-radius: 5px;
-  background-color: rgba(255, 255, 255, 0.66);
-  border: none;
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
 .keep-both-button:hover,
 .drop-both-button:hover {
-  background-color: #f0f0f0;
-  cursor: pointer;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--color-text-primary);
 }
 
-.return-overview-button {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  display: inline-block;
-  padding: 5px 10px;
-  font-family: 'Hack', monospace;
-  font-size: 1em;
-  border: none;
-  border-radius: 5px;
-  background-color: rgba(255, 255, 255, 0.66);
-  color: inherit;
-  text-decoration: none;
-  cursor: pointer;
+/* Pop-up animation — subtle scale */
+.pop-up {
+  animation: pop-up 200ms ease;
 }
 
-.return-overview-button:hover {
-  background-color: #f0f0f0;
+@keyframes pop-up {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
 }
 
+/* Not found / end of line */
 .not-found {
   display: flex;
   justify-content: center;
@@ -164,625 +675,196 @@ body {
 }
 
 .not-found p {
-  font-family: 'Hack', monospace;
-  font-size: 1.125em;
-  color: white;
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
   margin: 0;
+  line-height: 1.6;
 }
 
 .small-text {
-  font-size: 0.875em;
-  color: #ccc;
-  margin-top: 5px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
 }
 
-/* Style for the page wrapper to center content vertically */
-.page-wrapper {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height:   100%; /* Take full height of the body */
+/* ─── Completed View ─────────────────────────────────────────────────────── */
+
+.simple-text-page {
+  font-family: var(--font-family-ui);
+  color: var(--color-text-primary);
+  text-align: center;
+  padding-top: 20vh;
 }
 
-.blue-button {
-  margin-top: 20px;
-  padding: 10px 25px;
-  background-color: #8A4FFF; /* Match your purple highlight */
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Hack', monospace;
-  font-size: 16px;
-  font-weight: bold;
+.simple-text-page h1 {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semi);
+  margin-top: var(--space-4);
+}
+
+.completed-icon {
+  color: var(--color-success);
+}
+
+.transparent-text-button {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  padding: var(--space-2) var(--space-5);
   cursor: pointer;
-  transition: background-color 0.3s ease, transform 0.2s ease;
+  transition: all var(--transition-fast);
+  margin-top: var(--space-8);
 }
 
-.blue-button:hover {
-  background-color: #6a3dcc;
-  transform: scale(1.05);
-}
-.subscribe-button {
-  margin-top: 20px;
-  padding: 10px 25px;
-  background-color: #1A936F; /* Match your purple highlight */
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Hack', monospace;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background-color 0.3s ease, transform 0.2s ease;
+.transparent-text-button:hover {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
 }
 
-.subscribe-button:hover {
-  background-color: #23D19D;
-  transform: scale(1.05);
-}
+/* ─── Rename Popup Modal ─────────────────────────────────────────────────── */
 
-/* Existing styles */
-.image-buttons-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height:   50%; /* Half of the viewport height */
-}
-
-/* Style for the image buttons */
-.button {
-  display: inline-block; /* Display as inline-block to allow for padding */
-  overflow: hidden; /* Hide any content that goes outside the border */
-  border:   2px solid transparent; /* Slim frame around the image */
-  border-radius:   5px; /* Rounded corners */
-  transition: border-color   0.1s ease, transform   0.1s ease; /* Smooth transition for hover effect */
-  padding:   5px; /* Padding to create space around the image */
-  margin:   0   10px; /* Horizontal spacing between buttons */
-  cursor: pointer; /* Default cursor when hovering over the button */
-}
-
-/* Style for the image buttons when Shift is held */
-.button.shift-key-pressed {
-  cursor: move; /* Cursor indicating that the object can be moved */
-}
-
-/* Style for the image buttons when Shift is held and the mouse is down */
-.button.shift-key-pressed:active {
-  cursor: move; /* Cursor indicating that the object is being moved */
-}
-
-/* Style for the images within the image buttons */
-.button img {
-  max-width:   45vw; /* Set maximum width of the image */
-  max-height: 30vw;
-  height: auto; /* Automatically adjust the height based on the width */
-  transform: scale(1); /* Initial scale */
-  transform-origin: center; /* Center the zoom effect */
-  display: inline-block; /* Allows for transformations */
-  transition: transform   0.1s ease; /* Smooth transition for transformations */
-}
-
-/* Hover effect for the image buttons */
-.button:hover {
-  border-color: #093B4D; /* Highlight the frame on hover */
-}
-
-/* Import the 'Hack' font from Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Hack&display=swap');
-
-
-/* Style for the 'Select new seed image' button */
-.centered-button {
-  position: absolute; /* Position the button absolutely within the page */
-  bottom:   1vw; /* Distance from the bottom edge of the page */
-  right:   2.5vw; /* Distance from the right edge of the page */
-}
-
-/* Style for the 'Select new seed image' button */
-.centered-button .button {
-  background-color: #071A21; /* Background color */
-  border-radius:   5px; /* Rounded corners */
-  transition: background-color   0.3s ease; /* Smooth transition for hover effect */
-  padding:   10px   20px; /* Padding for better appearance */
-  color: white; /* Text color */
-  font-size:   16px; /* Font size */
-  cursor: pointer; /* Change cursor to pointer on hover */
-  text-decoration: none; /* Remove underline from anchor tag */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-}
-
-/* Hover effect for the 'Select new seed image' button */
-.centered-button .button:hover {
-  background-color: #093B4D; /* Darker shade for hover effect */
-}
-/* Style for the 'Select new seed image' button */
-.end-session-button {
-  position: absolute; /* Position the button absolutely within the page */
-  bottom:   1vw; /* Distance from the bottom edge of the page */
-  left:   2.5vw; /* Distance from the right edge of the page */
-}
-
-/* Style for the 'Select new seed image' button */
-.end-session-button .button {
-  background-color: #071A21; /* Background color */
-  border-radius:   5px; /* Rounded corners */
-  transition: background-color   0.3s ease; /* Smooth transition for hover effect */
-  padding:   10px   20px; /* Padding for better appearance */
-  color: white; /* Text color */
-  font-size:   16px; /* Font size */
-  cursor: pointer; /* Change cursor to pointer on hover */
-  text-decoration: none; /* Remove underline from anchor tag */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-}
-
-/* Hover effect for the 'Select new seed image' button */
-.end-session-button .button:hover {
-  background-color: #093B4D; /* Darker shade for hover effect */
-}
-/* Style for the page wrapper to center content vertically */
-.page-wrapper {
-  min-height:   100vh; /* Minimum height of the viewport */
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-.session-container {
-background-color: white; /* Set container background color #F4E4BA also looks nice*/
-width: 90vw; /* Set width to 90% of viewport */
-margin: 0 auto; /* Center horizontally */
-padding: 20px; /* Add padding around contents */
-border-radius: 5px; /* Add rounded corners */
-margin-bottom: 10px; /* Add spacing between containers */
-}
-/* Define CSS for thumbnail images */
-.thumbnail-img {
-height: 50px; /* Adjust the width as needed */
-padding: 1px 1px; /* Adjust padding for spacing */
-width: auto; /* Maintain aspect ratio */
-max-width: 100%; /* Ensure images do not exceed the specified width */
-max-height: 100px; /* Ensure images do not exceed the specified height */
-}
-.new-session-button {
-background-color: transparent; /* No background color for text */
-border: none; /* No border around button */
-color: black; /* Text color */
-font-size: 18px; /* Font size */
-padding: 10px 20px; /* Adjust padding for spacing */
-cursor: pointer; /* Change cursor on hover */
-text-decoration: none; /* Remove underline from anchor tag */
-font-family: 'Hack', monospace; /* Use the 'Hack' font */
-transition: all 0.3s ease; /* Smooth transition for hover effect */
-border-radius: 5px; /* Add rounded corners */
-}
-.new-session-button:hover {
-background-color: #eee; /* Change background color on hover */
-}
-.rename-session-button {
-  font-size: 16px; /* Slightly larger */
-  background-color: transparent; /* Fully transparent background */
-  border: none; /* No outline */
-  border-radius: 5px; /* Soft rounded corners */
-  padding: 5px 8px; /* Comfortable click area */
-  cursor: pointer; /* Pointer cursor on hover */
-  transition: background-color 0.3s ease; /* Smooth transition effect */
-
-  /* Optional: Slight hover effect */
-  &:hover {
-    background-color: rgba(200, 200, 200, 0.3); /* Light grayish hover effect */
-  }
-
-  /* Optional: Active (click) effect */
-  &:active {
-    background-color: rgba(200, 200, 200, 0.5);
-  }
-}
-/* Popup Background Overlay */
 .popup-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.5); /* Semi-transparent dark overlay */
+  background: var(--color-bg-overlay);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000; /* Ensure it appears on top */
+  z-index: 1000;
 }
 
-/* Popup Container */
 .popup-container {
-  background: white; /* Match session container */
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
   width: 40vw;
   max-width: 400px;
-  padding: 20px;
-  border-radius: 8px;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
   text-align: center;
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
-  font-family: 'Hack', monospace; /* Match existing font */
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-family-ui);
+  color: var(--color-text-primary);
 }
 
-/* Input Field */
+.popup-container h3 {
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semi);
+}
+
 .popup-container input {
-  width: 90%;
-  padding: 10px;
-  margin-top: 10px;
-  border: 2px solid #071A21;
-  border-radius: 5px;
-  font-size: 16px;
-  font-family: 'Hack', monospace;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-input);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-base);
   text-align: center;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  box-sizing: border-box;
 }
 
-/* Buttons */
+.popup-container input:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: 0 0 0 2px var(--color-accent-subtle);
+}
+
 .popup-buttons {
-  margin-top: 15px;
+  margin-top: var(--space-4);
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .popup-buttons button {
-  background-color: #071A21; /* Match other buttons */
-  color: white;
-  padding: 10px 15px;
-  border: none;
-  border-radius: 5px;
-  font-size: 16px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  transition: all var(--transition-fast);
 }
 
-.popup-buttons button:hover {
-  background-color: #093B4D;
+.popup-buttons button#popup-save {
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+}
+
+.popup-buttons button#popup-save:hover {
+  background: var(--color-accent-hover);
 }
 
 .popup-buttons button.cancel {
-  background-color: #888; /* Gray for cancel */
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-secondary);
 }
 
 .popup-buttons button.cancel:hover {
-  background-color: #555;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
 }
 
+/* ─── Dropdown ───────────────────────────────────────────────────────────── */
 
-.open-session-button {
-background-color: transparent; /* No background color for text */
-border: none; /* No border around button */
-color: black; /* Text color */
-font-size: 18px; /* Font size */
-padding: 15px 25px; /* Adjust padding for spacing */
-cursor: pointer; /* Change cursor on hover */
-text-decoration: none; /* Remove underline from anchor tag */
-font-family: 'Hack', monospace; /* Use the 'Hack' font */
-transition: all 0.3s ease; /* Smooth transition for hover effect */
-border-radius: 5px; /* Add rounded corners */
-float:right;
-}
-
-.drop-session-button {
-  background-color: transparent; /* No background color for text */
-  border: none; /* No border around button */
-  color: black; /* Text color */
-  font-size: 18px; /* Font size */
-  padding: 15px 25px; /* Adjust padding for spacing */
-  cursor: pointer; /* Change cursor on hover */
-  text-decoration: none; /* Remove underline from anchor tag */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-  transition: all 0.3s ease; /* Smooth transition for hover effect */
-  border-radius: 5px; /* Add rounded corners */
-  float:right;
-}
-
-/* Default styles for the download button */
-.download-button {
-  background-color: transparent; /* No background color for text */
-  border: none; /* No border around button */
-  color: black; /* Text color */
-  font-size: 18px; /* Font size */
-  padding: 15px 25px; /* Adjust padding for spacing */
-  cursor: pointer; /* Change cursor on hover */
-  text-decoration: none; /* Remove underline from anchor tag */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-  transition: all 0.3s ease; /* Smooth transition for hover effect */
-  border-radius: 5px; /* Add rounded corners */
-  float: right; /* Align to the right */
-}
-/* Add pulsate animation for completed download button */
-@keyframes pulsate {
-  0% {
-    transform: scale(1);
-    box-shadow: 0 0 5px rgba(138, 79, 255, 0.5);
-  }
-  50% {
-    transform: scale(1.05);
-    box-shadow: 0 0 15px rgba(138, 79, 255, 0.8);
-  }
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 5px rgba(138, 79, 255, 0.5);
-  }
-}
-
-/* Download button style when 100% progress is reached */
-.drop-session-button.complete {
-  background-color: #8A4FFF; /* Purple background for completed progress */
-  color: white; /* White text for better contrast */
-  font-weight: bold; /* Optional: Make text bold */
-  animation: pulsate 1.5s infinite; /* Apply pulsate animation */
-}
-/* Optional hover effect for completed state */
-.drop-session-button.complete:hover {
-  background-color: #6a3dcc; /* Darker purple on hover */
-  animation: none; /* Stop animation on hover */
-}
-/* Download button style when 100% progress is reached */
-.download-button.complete {
-  background-color: #8A4FFF; /* Purple background for completed progress */
-  color: white; /* White text for better contrast */
-  font-weight: bold; /* Optional: Make text bold */
-  animation: pulsate 1.5s infinite; /* Apply pulsate animation */
-}
-/* Optional hover effect for completed state */
-.download-button.complete:hover {
-  background-color: #6a3dcc; /* Darker purple on hover */
-  animation: none; /* Stop animation on hover */
-}
-/* Download button style when 100% progress is reached */
-.open-session-button.complete {
-  background-color: #8A4FFF; /* Purple background for completed progress */
-  color: white; /* White text for better contrast */
-  font-weight: bold; /* Optional: Make text bold */
-  animation: pulsate 1.5s infinite; /* Apply pulsate animation */
-}
-/* Optional hover effect for completed state */
-.open-session-button.complete:hover {
-  background-color: #6a3dcc; /* Darker purple on hover */
-  animation: none; /* Stop animation on hover */
-}
-.loading {
-  background-color: #555;
-  color: white;
-  opacity: 0.7;
-  cursor: wait;
-}
-
-
-.fixed-top {
-top: 1vw; /* Position it at the top of the viewport */
-left: 5vw; /* Position it at the left edge of the viewport */
-z-index: 1; /* Ensure it's on top of other elements */
-}
-.sessions-header {
-font-family: 'Hack', monospace;
-color: white;
-text-align: left; /* Left-align the text */
-top: 1vw; /* Position it at the top of the viewport */
-}
-/* Style for the 'Select new seed image' button */
-/* Style for the image buttons */
-.continue-button-left {
-  position: absolute; /* Position the button absolutely within the page */
-  top:   7vw; /* Distance from the bottom edge of the page */
-  left:   5vw; /* Distance from the right edge of the page */
-  cursor: pointer; /* Change cursor to pointer on hover */
-  font-size:   13px; /* Font size */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-}
-.continue-button-right {
-  position: absolute; /* Position the button absolutely within the page */
-  top:   7vw; /* Distance from the bottom edge of the page */
-  right:   5vw; /* Distance from the right edge of the page */
-  cursor: pointer; /* Change cursor to pointer on hover */
-  font-size:   13px; /* Font size */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-}
-.upload-container {
-background-color: white; /* Set container background color */
-margin: 0 auto; /* Center horizontally */
-padding: 100px; /* Add padding around contents */
-border-radius: 15px; /* Add rounded corners */
-margin-bottom: 10px; /* Add spacing between containers */
-}
-.browse-button {
-  cursor: pointer; /* Change cursor to pointer on hover */
-  font-size:   20px; /* Font size */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-}
-.upload-button {
-  cursor: pointer; /* Change cursor to pointer on hover */
-  font-size:   20px; /* Font size */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-}
 .dropdown {
   margin: 0;
   position: absolute;
   top: 0;
   right: 0;
   display: inline-block;
-  background-color: transparent;
+  background: transparent;
 }
 
 .dropdown-content {
   display: none;
   position: absolute;
   right: 0;
-  background-color: #f8f9fa;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
   min-width: 160px;
-  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
   z-index: 1;
+  padding: var(--space-1) 0;
 }
 
 .dropdown-content a {
-  color: black;
-  padding: 12px 16px;
+  color: var(--color-text-primary);
+  padding: var(--space-2) var(--space-4);
   text-decoration: none;
   display: block;
-  font-family: 'Hack', monospace;
-}
-
-.dropdown:hover .dropdown-content {
-  display: block;
-}
-.transparent-text-button {
-  background-color: transparent; /* Background color */
-  border-radius: 5px; /* Rounded corners */
-  transition: background-color 0.3s ease; /* Smooth transition for hover effect */
-  padding: 10px 20px; /* Padding for better appearance */
-  color: white; /* Text color */
-  font-size: 16px; /* Font size */
-  cursor: pointer; /* Change cursor to pointer on hover */
-  text-decoration: none; /* Remove underline from anchor tag */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-  border: none;
-}
-
-.simple-text-page {
-  font-family: 'Hack', monospace;
-  color: white;
-  text-align: center;
-  /* Padd 10 % from top */
-  padding-top: 5%;
-}
-.session-container {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start; /* Align items to the start of the container */
-  padding: 10px 0; /* Add some vertical padding between sessions */
-}
-
-.session-content {
-  display: flex;
-  align-items: left;
-}
-
-
-/*Bar indicating session progress*/
-.session-progress {
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-}
-.session-progress progress {
-  width: 200px; /* Adjust width to your preference */
-  height: 20px; /* Height of the progress bar */
-  appearance: none; /* Remove default browser styling */
-  border-radius: 5px; /* Rounded corners */
-}
-.session-progress progress::-moz-progress-bar {
-  background-color: #E98A15;
-  border-radius: 5px;
-}
-.session-progress span {
-  margin-right: 10px; /* Add some space between the text and the progress bar */
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-  font-size: 16px; /* Font size */
-}
-/* Additional CSS for the green color at 100% */
-.session-progress progress.complete::-webkit-progress-value {
-  background-color: #8A4FFF;
-}
-.session-progress progress.complete::-moz-progress-bar {
-  background-color: #8A4FFF;
-}
-
-/* Logout button with transparent background */
-.logout-button {
-  background-color: transparent; /* Transparent background */
-  border: none; /* Remove border */
-  cursor: pointer; /* Change cursor to pointer */
-  font-size: 24px; /* Adjust font size if necessary */
-  padding: 5px; /* Add some padding for better clickability */
-  color: inherit; /* Use inherited text color */
-}
-
-.logout-button:hover {
-  color: orange; /* Change text color on hover for better visibility */
-  transform: scale(1.1); /* Slightly enlarge the button on hover */
-}
-
-.logout-button:focus {
-  outline: none; /* Remove the focus outline */
-}
-/* Dropdown content with rounded corners */
-.dropdown-content {
-  display: none; /* Initially hidden */
-  position: absolute; /* Positioned relative to the parent container */
-  background-color: white; /* Dropdown background */
-  border: 1px solid #ddd; /* Optional border for better visibility */
-  border-radius: 8px; /* Rounded corners */
-  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
-  z-index: 1; /* Ensure it appears above other elements */
-  padding: 10px 0; /* Add some padding inside the dropdown */
-}
-
-.dropdown-content a {
-  color: black; /* Text color */
-  padding: 10px 20px; /* Spacing for each link */
-  text-decoration: none; /* Remove underline */
-  display: block; /* Make links fill the container width */
-  font-family: 'Hack', monospace; /* Consistent font styling */
-  font-size: 14px; /* Adjust font size */
+  font-family: var(--font-family-ui);
+  font-size: var(--font-size-sm);
+  transition: background var(--transition-fast);
 }
 
 .dropdown-content a:hover {
-  background-color: #f0f0f0; /* Highlight background on hover */
-  border-radius: 8px; /* Match rounded corners on hover */
+  background: var(--color-accent-subtle);
 }
 
 .dropdown:hover .dropdown-content {
-  display: block; /* Show dropdown on hover */
+  display: block;
 }
 
+/* ─── Fixed top positioning ──────────────────────────────────────────────── */
 
-/*Bar inidcating upload progress*/
-.overlay {
-  position: fixed;
+.fixed-top {
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  visibility: hidden;
-}
-.progress-bar {
-  width: 80%;
-  height: 30px;
-  background-color: #f3f3f3;
-  border-radius: 5px;
-  overflow: hidden;
-  margin-top: 20px;
-}
-.progress-bar-inner {
-  height: 100%;
-  width: 0;
-  background-color: #FCD581;
-  text-align: center;
-  line-height: 30px;
-  color: white;
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-}
-.progress-text {
-  color: white;
-  font-size: 18px;
-  font-family: 'Hack', monospace; /* Use the 'Hack' font */
-}
-.spinner {
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top: 4px solid #fff;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin-top: 20px;
-  visibility: hidden;
-}
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  z-index: 1;
 }
