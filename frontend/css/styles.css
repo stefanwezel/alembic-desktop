@@ -667,11 +667,14 @@ body {
 
 /* Not found / end of line */
 .not-found {
+  position: absolute;
+  inset: 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100%;
   text-align: center;
+  background: var(--color-bg-decision);
+  z-index: 1;
 }
 
 .not-found p {

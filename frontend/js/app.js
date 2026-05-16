@@ -329,6 +329,9 @@ function loadDecision(sessionId, idLeft, idRight) {
 
   showView("decision");
 
+  // Clear any not-found overlays left over from a previous endofline render
+  clearNotFoundOverlays();
+
   // Reset image transforms and src
   const leftImg = document.getElementById("img-left");
   const rightImg = document.getElementById("img-right");
@@ -344,7 +347,7 @@ function loadDecision(sessionId, idLeft, idRight) {
   // Clear old keyboard handlers
   clearDecisionHandlers();
 
-  // Load images
+  // Load images (preview first; display upgrades in the background)
   renderImage("left", idLeft);
   renderImage("right", idRight);
 
@@ -361,6 +364,9 @@ function loadDecision(sessionId, idLeft, idRight) {
   };
   document.addEventListener("keydown", resetHandler);
   decisionKeydownHandlers.push(resetHandler);
+
+  // Warm the preview cache with the two most-likely next images
+  prefetchNext(sessionId, idLeft, idRight);
 }
 
 function setupImageControls(side, img, clickedId, otherId) {
@@ -464,61 +470,97 @@ function setupImageControls(side, img, clickedId, otherId) {
   };
 }
 
+// ─── Preview cache + prefetch ──────────────────────────────────────────────────
+
+const MAX_PREVIEW_CACHE = 20;
+const previewCache = new Map(); // imgId -> { blob, url }
+const currentRenderIds = { left: null, right: null };
+
+function cachePut(imgId, blob) {
+  const existing = previewCache.get(imgId);
+  if (existing) {
+    previewCache.delete(imgId);
+    previewCache.set(imgId, existing);
+    return existing;
+  }
+  if (previewCache.size >= MAX_PREVIEW_CACHE) {
+    const [oldestKey, oldest] = previewCache.entries().next().value;
+    URL.revokeObjectURL(oldest.url);
+    previewCache.delete(oldestKey);
+  }
+  const entry = { blob, url: URL.createObjectURL(blob) };
+  previewCache.set(imgId, entry);
+  return entry;
+}
+
+async function fetchPreviewEntry(imgId) {
+  const hit = previewCache.get(imgId);
+  if (hit) {
+    previewCache.delete(imgId);
+    previewCache.set(imgId, hit); // bump to MRU
+    return hit;
+  }
+  const res = await fetch(`${API_BASE}/serve_image?img_id=${imgId}&version=preview`);
+  if (!res.ok || res.headers.get("Content-Type") !== "image/jpeg") {
+    throw new Error("Invalid response or no image found");
+  }
+  return cachePut(imgId, await res.blob());
+}
+
+async function prefetchNext(sessionId, idLeft, idRight) {
+  try {
+    const res = await fetch(`${API_BASE}/next_candidates?session_id=${sessionId}&id_left=${idLeft}&id_right=${idRight}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    for (const candidate of [data.next_if_stays_left, data.next_if_stays_right]) {
+      if (candidate && !previewCache.has(candidate)) {
+        fetchPreviewEntry(candidate).catch(() => {});
+      }
+    }
+  } catch (_) {
+    // Best-effort; prefetch failure never breaks the main flow.
+  }
+}
+
+function clearNotFoundOverlays() {
+  document.querySelectorAll(".img-wrapper .not-found").forEach((el) => el.remove());
+}
+
+function showNotFoundOverlay(wrapper) {
+  if (wrapper.querySelector(".not-found")) return;
+  const overlay = document.createElement("div");
+  overlay.className = "not-found";
+  overlay.innerHTML = `
+    <p>No more images found. Looks like you're done!<br>
+    <span class="small-text">Decide what you want to do with the last image to complete the session.</span></p>
+  `;
+  wrapper.appendChild(overlay);
+}
+
 async function renderImage(side, imgId) {
   const img = document.getElementById(`img-${side}`);
+  currentRenderIds[side] = imgId;
 
   try {
-    const thumbnailResponse = await fetch(`${API_BASE}/serve_image?img_id=${imgId}&version=thumbnail`);
-    if (!thumbnailResponse.ok || thumbnailResponse.headers.get("Content-Type") !== "image/jpeg") {
-      throw new Error("Invalid response or no thumbnail image found");
-    }
-    const thumbnailBlob = await thumbnailResponse.blob();
-    const thumbnailURL = URL.createObjectURL(thumbnailBlob);
-    img.src = thumbnailURL;
+    const entry = await fetchPreviewEntry(imgId);
+    if (currentRenderIds[side] !== imgId) return; // stale
 
-    img.onload = async () => {
-      console.log("Thumbnail image loaded successfully.");
-
-      const previewResponse = await fetch(`${API_BASE}/serve_image?img_id=${imgId}&version=preview`);
-      if (!previewResponse.ok || previewResponse.headers.get("Content-Type") !== "image/jpeg") {
-        throw new Error("Invalid response or no preview image found");
-      }
-      const previewBlob = await previewResponse.blob();
-      const previewURL = URL.createObjectURL(previewBlob);
-
-      img.onload = async () => {
-        console.log("Preview image loaded successfully.");
-        URL.revokeObjectURL(thumbnailURL);
-
-        const displayResponse = await fetch(`${API_BASE}/serve_image?img_id=${imgId}&version=display`);
-        if (displayResponse.ok) {
-          console.log("Trying to render display image...");
-          const displayBlob = await displayResponse.blob();
-          const displayURL = URL.createObjectURL(displayBlob);
-
-          img.onload = () => {
-            console.log("Display image loaded successfully.");
-            URL.revokeObjectURL(previewURL);
-          };
-          img.src = displayURL;
-        }
-      };
-
-      img.src = previewURL;
-    };
+    img.onload = () => upgradeToDisplay(img, side, imgId);
+    img.src = entry.url;
   } catch (error) {
-    if (error.name === "AbortError") {
-      console.warn(`Fetch aborted for ${imgId}, but continuing...`);
-    } else {
-      console.error(`Error rendering image for ${imgId}:`, error);
-      img.parentElement.innerHTML = `
-        <div class="not-found">
-          <p>No more images found. Looks like you're done!<br>
-          <span class="small-text">Decide what you want to do with the last image to complete the session.</span></p>
-        </div>
-      `;
-    }
+    console.error(`Error rendering image for ${imgId}:`, error);
+    if (currentRenderIds[side] !== imgId) return;
+    showNotFoundOverlay(img.parentElement);
   }
+}
+
+function upgradeToDisplay(img, side, imgId) {
+  const pre = new Image();
+  pre.onload = () => {
+    if (currentRenderIds[side] !== imgId) return;
+    img.src = pre.src;
+  };
+  pre.src = `${API_BASE}/serve_image?img_id=${imgId}&version=display`;
 }
 
 async function updateImages(route, sessionId, position, clickedImageId, otherImageId) {
@@ -538,22 +580,12 @@ async function updateImages(route, sessionId, position, clickedImageId, otherIma
       return;
     }
     const data = await res.json();
-    if (!data.redirect) {
-      console.log("No redirect provided.");
-      return;
-    }
-    if (data.redirect === "completed" || data.redirect === "/completed") {
+    if (data.status === "completed") {
       showView("completed");
+    } else if (data.status === "next") {
+      loadDecision(sessionId, String(data.img_id_left), String(data.img_id_right));
     } else {
-      // data.redirect is "/sweep?session_id=...&id_left=...&id_right=..."
-      // Fetch /sweep to persist last_viewed, then use the returned IDs
-      const sweepRes = await fetch(`${API_BASE}${data.redirect}`);
-      const sweepData = await sweepRes.json();
-      loadDecision(
-        String(sweepData.session_id),
-        String(sweepData.img_id_left),
-        String(sweepData.img_id_right)
-      );
+      console.error("Unexpected action response:", data);
     }
   } catch (e) {
     console.error("Error:", e);

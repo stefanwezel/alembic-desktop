@@ -229,14 +229,20 @@ def get_session(session_id: str) -> Session:
         raise e
 
 
-def get_nearest_neighbor(session_id: str, query_image_id: str) -> Embedding:
-    """Get the nearest neighbor to the query image using numpy L2 distance."""
+def get_nearest_neighbor(session_id: str, query_image_id: str, exclude_ids=None) -> Embedding:
+    """Get the nearest neighbor to the query image using numpy L2 distance.
+
+    `exclude_ids` lets callers skip images besides the query (e.g. the other
+    currently-displayed image during a speculative prefetch).
+    """
     query_emb = Embedding.query.filter_by(id=query_image_id).one()
     query_vec = query_emb.get_embedding()
 
+    excluded = set(exclude_ids or []) | {query_image_id}
+
     candidates = Embedding.query.filter(
         Embedding.session_id == session_id,
-        Embedding.id != query_image_id,
+        ~Embedding.id.in_(excluded),
         Embedding.status == "unreviewed",
     ).all()
 
@@ -358,6 +364,12 @@ def serve_image():
         return jsonify({"error": "invalid_version"}), 400
 
 
+def _next_pair_response(session_id: str, id_left: str, id_right: str):
+    """Persist last-viewed and return the canonical next-pair payload."""
+    update_last_viewed(session_id, id_left, id_right)
+    return jsonify({"status": "next", "img_id_left": id_left, "img_id_right": id_right})
+
+
 @app.route("/like_image", methods=["POST"])
 def like_image():
     """ Save image as 'reviewed_keep' and display nearest neighbor. """
@@ -369,14 +381,18 @@ def like_image():
     update_image_status(clicked_id, set_status_to="reviewed_keep")
 
     if other_id is None:
-        return jsonify({"redirect": "completed"})
+        return jsonify({"status": "completed"})
 
     embedding_other = get_embedding(other_id)
     nearest_neighbor = get_nearest_neighbor(session_id, embedding_other.id)
 
-    redirect_url = generate_sweep_request(position, session_id, embedding_other.id, nearest_neighbor.id)
+    # Clicked side gets replaced with nearest; other stays where it was.
+    if position == "left":
+        id_left, id_right = nearest_neighbor.id, embedding_other.id
+    else:
+        id_left, id_right = embedding_other.id, nearest_neighbor.id
 
-    return jsonify({"redirect": redirect_url})
+    return _next_pair_response(session_id, id_left, id_right)
 
 
 @app.route("/drop_image", methods=["POST"])
@@ -390,14 +406,17 @@ def drop_image():
     update_image_status(clicked_id, set_status_to="reviewed_discard")
 
     if other_id is None:
-        return jsonify({"redirect": "completed"})
+        return jsonify({"status": "completed"})
 
     embedding_other = get_embedding(other_id)
     nearest_neighbor = get_nearest_neighbor(session_id, embedding_other.id)
 
-    redirect_url = generate_sweep_request(position, session_id, embedding_other.id, nearest_neighbor.id)
+    if position == "left":
+        id_left, id_right = nearest_neighbor.id, embedding_other.id
+    else:
+        id_left, id_right = embedding_other.id, nearest_neighbor.id
 
-    return jsonify({"redirect": redirect_url})
+    return _next_pair_response(session_id, id_left, id_right)
 
 
 @app.route("/continue_from", methods=["POST"])
@@ -415,10 +434,44 @@ def continue_from():
     nearest_neighbor = get_nearest_neighbor(session_id, embedding_clicked.id)
 
     if nearest_neighbor.preview_path == "endofline":
-        return jsonify({"redirect": "completed"})
+        return jsonify({"status": "completed"})
+
+    # Clicked stays on its side; nearest appears opposite.
+    if position == "left":
+        id_left, id_right = embedding_clicked.id, nearest_neighbor.id
     else:
-        redirect_url = generate_sweep_request(position, session_id, nearest_neighbor.id, embedding_clicked.id)
-        return jsonify({"redirect": redirect_url})
+        id_left, id_right = nearest_neighbor.id, embedding_clicked.id
+
+    return _next_pair_response(session_id, id_left, id_right)
+
+
+@app.route("/next_candidates", methods=["GET"])
+def next_candidates():
+    """Return the two images most likely to appear after the user's next action.
+
+    Given the current (left, right) pair, computes:
+      - next_if_stays_left  = nearestOf(left)  excluding right  — covers continue-from-left, like-right, drop-right.
+      - next_if_stays_right = nearestOf(right) excluding left   — covers continue-from-right, like-left, drop-left.
+    Returns null for either side when the nearest is the endofline sentinel (frontend skips prefetch).
+    """
+    session_id = request.args.get("session_id")
+    id_left = request.args.get("id_left")
+    id_right = request.args.get("id_right")
+
+    try:
+        if_stays_left = get_nearest_neighbor(session_id, id_left, exclude_ids=[id_right])
+        if_stays_right = get_nearest_neighbor(session_id, id_right, exclude_ids=[id_left])
+    except Exception as e:
+        logging.error(f"next_candidates failed: {e}")
+        return jsonify({"next_if_stays_left": None, "next_if_stays_right": None})
+
+    def real_id(emb):
+        return None if emb.preview_path == "endofline" else emb.id
+
+    return jsonify({
+        "next_if_stays_left": real_id(if_stays_left),
+        "next_if_stays_right": real_id(if_stays_right),
+    })
 
 
 @app.route("/has_been_downloaded", methods=["GET"])
@@ -447,31 +500,8 @@ def open_session():
         img_id_right = session.last_viewed_right
         logging.info(f"Starting from last viewed images {img_id_left} and {img_id_right}")
 
-    return jsonify(
-        {"session": session_id, "img_id_left": img_id_left, "img_id_right": img_id_right, "redirect": "/sweep"}
-    )
-
-
-def generate_sweep_request(position: str, session_id: str, id_1: str, id_2: str) -> str:
-    """ Helper function to format URL for GET request to sweep. """
-    if id_1 == id_2:
-        return "/completed"
-    if position == "left":
-        return f"/sweep?session_id={session_id}&id_left={id_2}&id_right={id_1}"
-    else:
-        return f"/sweep?session_id={session_id}&id_left={id_1}&id_right={id_2}"
-
-
-@app.route("/sweep", methods=["GET"])
-def sweep():
-    """ Main route to display decision page. """
-    session_id = request.args.get("session_id")
-    id_left = request.args.get("id_left")
-    id_right = request.args.get("id_right")
-
-    update_last_viewed(session_id, id_left, id_right)
-
-    return jsonify({"session_id": session_id, "img_id_left": id_left, "img_id_right": id_right})
+    update_last_viewed(session_id, img_id_left, img_id_right)
+    return jsonify({"session": session_id, "img_id_left": img_id_left, "img_id_right": img_id_right})
 
 
 @app.route("/end_session", methods=["GET"])
