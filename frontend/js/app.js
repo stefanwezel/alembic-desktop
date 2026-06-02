@@ -162,11 +162,16 @@ async function openSession(sessionId, progress) {
   }
   try {
     const res = await fetch(`${API_BASE}/open_session?session_id=${sessionId}`);
+    if (res.status === 422) {
+      alert("This session has no images to review. None of the files in the selected folder could be imported.");
+      return;
+    }
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
     loadDecision(sessionId, String(data.img_id_left), String(data.img_id_right));
   } catch (e) {
     console.error("Error opening session:", e);
+    alert("Could not open this session. Please try again.");
   }
 }
 

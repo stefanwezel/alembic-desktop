@@ -491,6 +491,10 @@ def open_session():
 
     if not session.last_viewed_left:  # this is the initial starting case when a session is newly created
         random_starting_image = get_random_starting_image(session_id)
+        if random_starting_image is None:
+            # Session has no reviewable images (e.g. every file failed to import).
+            logging.error(f"Session {session_id} has no usable images to open.")
+            return jsonify({"error": "no_images"}), 422
         nearest_neighbor = get_nearest_neighbor(session_id, random_starting_image.id)
         img_id_left = random_starting_image.id
         img_id_right = nearest_neighbor.id

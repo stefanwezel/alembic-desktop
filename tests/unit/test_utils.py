@@ -88,6 +88,30 @@ def test_prepare_image_jpg(jpg_dir, tmpdir):
         assert numpy_image.shape[-1] == 3
 
 
+def test_get_orientation_missing_tag_does_not_crash(tmpdir):
+    """A JPEG without an Orientation EXIF tag must not raise (regression)."""
+    from PIL import Image
+
+    path = os.path.join(tmpdir, "no_orientation.jpg")
+    Image.new("RGB", (64, 48), (10, 20, 30)).save(path)
+
+    assert utils.get_orientation(path) is None
+
+
+def test_prepare_image_jpg_without_orientation(tmpdir):
+    """JPEGs lacking an Orientation EXIF tag must still import successfully."""
+    from PIL import Image
+
+    input_path = os.path.join(tmpdir, "plain.jpg")
+    Image.new("RGB", (640, 480), (10, 20, 30)).save(input_path)
+
+    display_path, thumbnail_path, preview_path, numpy_image = utils.prepare_image(input_path, output_dir=str(tmpdir))
+
+    assert os.path.exists(thumbnail_path), f"Output image {thumbnail_path} not created."
+    assert os.path.exists(preview_path), f"Output image {preview_path} not created."
+    assert numpy_image.shape[-1] == 3
+
+
 def test_prepare_image_dng(dng_dir, tmpdir):
     for file in os.listdir(dng_dir):
         input_path = os.path.join(dng_dir, file)

@@ -109,9 +109,12 @@ def generate_thumbnail_path(img_path: str) -> str:
 
 
 def get_orientation(image_path):
-    in_file = open(image_path, "rb")
-    orientation = exifread.process_file(in_file).get("Image Orientation", None)
-    logging.info(f"Orientation: {orientation} - Value: {orientation.values[0]}")
+    with open(image_path, "rb") as in_file:
+        orientation = exifread.process_file(in_file).get("Image Orientation", None)
+    if orientation is None:
+        logging.info("Orientation: not present")
+    else:
+        logging.info(f"Orientation: {orientation} - Value: {orientation.values[0]}")
     return orientation
 
 
