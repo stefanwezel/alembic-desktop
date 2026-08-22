@@ -19,6 +19,7 @@ function icon(name, size = 16) {
 // ─── View Management ───────────────────────────────────────────────────────────
 
 function showView(name) {
+  if (name !== "decision") clearDecisionHandlers();
   document.querySelectorAll("section[id^='view-']").forEach((s) => {
     s.style.display = "none";
   });
@@ -332,6 +333,12 @@ window.addEventListener("beforeunload", (event) => {
 
 let decisionKeydownHandlers = [];
 
+function isTypingTarget(event) {
+  const element = event.target;
+  if (!element) return false;
+  return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element.isContentEditable;
+}
+
 function clearDecisionHandlers() {
   for (const handler of decisionKeydownHandlers) {
     document.removeEventListener("keydown", handler);
@@ -375,6 +382,7 @@ function loadDecision(sessionId, idLeft, idRight) {
 
   // R key resets zoom on both images
   const resetHandler = (event) => {
+    if (isTypingTarget(event)) return;
     if (event.code === "KeyR") {
       leftImg.style.transform = "scale(1) translate(0px, 0px)";
       rightImg.style.transform = "scale(1) translate(0px, 0px)";
@@ -443,6 +451,7 @@ function setupImageControls(side, img, clickedId, otherId) {
 
   // Keyboard shortcuts
   const keyHandler = (event) => {
+    if (isTypingTarget(event)) return;
     if (side === "left") {
       if (event.code === "KeyD") selectButtonLike.click();
       else if (event.code === "KeyS") selectButtonContinueFrom.click();
