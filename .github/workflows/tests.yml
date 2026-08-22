@@ -22,7 +22,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r app/requirements.txt
+        run: pip install -r app/requirements-dev.txt
 
       - name: Unit tests
         run: pytest --log-level=INFO tests/unit/

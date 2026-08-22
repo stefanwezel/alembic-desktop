@@ -35,7 +35,7 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
 sudo apt-get install -y pkg-config libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf libturbojpeg0-dev
 
 # Setup Python environment
-python3 -m venv .venv && source .venv/bin/activate && pip install -r app/requirements.txt pyinstaller
+python3 -m venv .venv && source .venv/bin/activate && pip install -r app/requirements-dev.txt pyinstaller
 
 # Build/rebuild the Python sidecar (required before first run and after any Python changes)
 ./scripts/rebuild-sidecar.sh
