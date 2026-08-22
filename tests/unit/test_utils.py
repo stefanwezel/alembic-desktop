@@ -36,6 +36,33 @@ def test_load_image_dng(dng_dir):
         assert image.shape[-1] == 3  # assume channel dimension is last
 
 
+@pytest.mark.parametrize("filename", ["sample.png", "sample.tif", "sample.tiff"])
+def test_load_image_non_jpeg_formats(tmpdir, filename):
+    """PNG and TIFF are advertised as supported and must decode to BGR arrays (regression)."""
+    from PIL import Image
+
+    path = os.path.join(tmpdir, filename)
+    Image.new("RGB", (80, 60), (10, 20, 30)).save(path)
+
+    image = utils.load_image(path)
+
+    assert type(image) == np.ndarray
+    assert image.shape == (60, 80, 3)
+    assert image.dtype == np.uint8
+    assert tuple(image[0, 0]) == (30, 20, 10)  # RGB source arrives as BGR
+
+
+def test_raw_extensions_route_to_rawpy():
+    """Every advertised RAW format must be decoded by rawpy, not by the JPEG fast path."""
+    assert utils.RAW_EXTENSIONS == {".dng", ".cr2", ".nef", ".arw"}
+    assert utils.SUPPORTED_EXTENSIONS == {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".dng", ".cr2", ".nef", ".arw"}
+
+
+def test_load_image_handles_mixed_case_extensions(dng_dir):
+    for file in os.listdir(dng_dir):
+        assert utils.get_extension(os.path.join(dng_dir, file.upper())) in utils.RAW_EXTENSIONS
+
+
 def test_generate_jpg_path(dng_dir):
     for file in os.listdir(dng_dir):
         jpg_path = utils.generate_jpg_path(os.path.join(dng_dir, file))

@@ -18,7 +18,11 @@ from flask_sqlalchemy import SQLAlchemy
 log_level = os.getenv("LOG_LEVEL", "ERROR").upper()
 logging.basicConfig(level=log_level)
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".dng", ".png", ".tiff", ".tif", ".cr2", ".nef", ".arw"}
+IMAGE_EXTENSIONS = utils.SUPPORTED_EXTENSIONS
+
+# Sessions created before the sweep protocol allowed empty sides carry a synthetic "endofline" row.
+# Nothing creates one any more, but existing databases still contain them, so they stay filtered out.
+ENDOFLINE = "endofline"
 
 
 def _get_onnx_model_path() -> str:
@@ -197,17 +201,17 @@ def remove_session_from_db(session_id: str) -> None:
 
 def get_images_to_keep(session_id: str) -> List[str]:
     """ Get set of images where status is 'reviewed_keep'. """
-    embeddings = Embedding.query.filter_by(session_id=session_id).all()
-    images_to_keep = []
-    for embedding in embeddings:
-        if embedding.status == "reviewed_keep":
-            images_to_keep.append(embedding.download_path)
-    return images_to_keep
+    embeddings = Embedding.query.filter(
+        Embedding.session_id == session_id,
+        Embedding.status == "reviewed_keep",
+        Embedding.download_path != ENDOFLINE,
+    ).all()
+    return [embedding.download_path for embedding in embeddings]
 
 
 def get_random_starting_image(session_id: str) -> Optional[Embedding]:
     unreviewed_images = Embedding.query.filter(
-        Embedding.session_id == session_id, Embedding.status == "unreviewed", Embedding.display_path != "endofline",
+        Embedding.session_id == session_id, Embedding.status == "unreviewed", Embedding.display_path != ENDOFLINE,
     ).all()
     if unreviewed_images:
         return random.choice(unreviewed_images)
@@ -229,11 +233,12 @@ def get_session(session_id: str) -> Session:
         raise e
 
 
-def get_nearest_neighbor(session_id: str, query_image_id: str, exclude_ids=None) -> Embedding:
-    """Get the nearest neighbor to the query image using numpy L2 distance.
+def get_nearest_neighbor(session_id: str, query_image_id: str, exclude_ids=None) -> Optional[Embedding]:
+    """Get the nearest unreviewed neighbor to the query image using numpy L2 distance.
 
     `exclude_ids` lets callers skip images besides the query (e.g. the other
     currently-displayed image during a speculative prefetch).
+    Returns None when the session holds no further image to show.
     """
     query_emb = Embedding.query.filter_by(id=query_image_id).one()
     query_vec = query_emb.get_embedding()
@@ -244,20 +249,33 @@ def get_nearest_neighbor(session_id: str, query_image_id: str, exclude_ids=None)
         Embedding.session_id == session_id,
         ~Embedding.id.in_(excluded),
         Embedding.status == "unreviewed",
+        Embedding.preview_path != ENDOFLINE,
     ).all()
 
     if not candidates:
-        return Embedding.query.filter(
-            Embedding.session_id == session_id,
-            Embedding.preview_path == "endofline",
-        ).one()
+        return None
 
     return min(candidates, key=lambda c: np.linalg.norm(c.get_embedding() - query_vec))
 
 
-def update_image_status(update_image_id: str, set_status_to: str = "reviewed_discard") -> None:
+def resolve_visible_id(image_id: Optional[str]) -> Optional[str]:
+    """Map an image id to None when it cannot be displayed (missing row, or a legacy sentinel)."""
+    if not image_id:
+        return None
+    embedding = Embedding.query.filter_by(id=image_id).first()
+    if embedding is None or embedding.preview_path == ENDOFLINE:
+        return None
+    return image_id
+
+
+def update_image_status(update_image_id: Optional[str], set_status_to: str = "reviewed_discard") -> None:
+    if update_image_id is None:  # empty side of the pair, nothing to review
+        return
     try:
         embedding = Embedding.query.filter_by(id=update_image_id).one()
+        if embedding.preview_path == ENDOFLINE:  # legacy sentinel row, not a real image
+            logging.error(f"Refusing to review the endofline placeholder {update_image_id}.")
+            return
         embedding.status = set_status_to
         db.session.commit()
     except Exception as e:
@@ -279,13 +297,13 @@ def update_last_viewed(session_id: str, last_viewed_left: str, last_viewed_right
 def get_percentage_reviewed(session_id: str) -> int:
     """ This is used to display session progress on the overview page. """
     count_all = len(
-        Embedding.query.filter(Embedding.session_id == session_id, Embedding.preview_path != "endofline").all()
+        Embedding.query.filter(Embedding.session_id == session_id, Embedding.preview_path != ENDOFLINE).all()
     )
     count_reviewed = len(
         Embedding.query.filter(
             Embedding.session_id == session_id,
             Embedding.status.in_(["reviewed_keep", "reviewed_discard"]),
-            Embedding.preview_path != "endofline",
+            Embedding.preview_path != ENDOFLINE,
         ).all()
     )
     try:
@@ -350,7 +368,7 @@ def serve_image():
 
     embedding = get_embedding(img_id)
 
-    if embedding.preview_path == "endofline":
+    if embedding.preview_path == ENDOFLINE:
         return jsonify({"error": "end_of_line"}), 404
 
     if version == "thumbnail":
@@ -370,53 +388,44 @@ def _next_pair_response(session_id: str, id_left: str, id_right: str):
     return jsonify({"status": "next", "img_id_left": id_left, "img_id_right": id_right})
 
 
-@app.route("/like_image", methods=["POST"])
-def like_image():
-    """ Save image as 'reviewed_keep' and display nearest neighbor. """
+def _review_clicked_and_advance(set_status_to: str):
+    """Review the clicked image, keep the other one on screen and refill the freed side.
+
+    The freed side is None once the session runs out of images: the remaining image is
+    then shown on its own until the user decides on it too, which completes the session.
+    """
     clicked_id = request.json.get("clickedImageId")
     other_id = request.json.get("otherImageId")
     position = request.json.get("position")
     session_id = request.json.get("session_id")
 
-    update_image_status(clicked_id, set_status_to="reviewed_keep")
+    update_image_status(clicked_id, set_status_to=set_status_to)
 
-    if other_id is None:
+    if other_id is None:  # the clicked image was the last one on screen
         return jsonify({"status": "completed"})
 
-    embedding_other = get_embedding(other_id)
-    nearest_neighbor = get_nearest_neighbor(session_id, embedding_other.id)
+    nearest_neighbor = get_nearest_neighbor(session_id, other_id)
+    nearest_id = nearest_neighbor.id if nearest_neighbor is not None else None
 
     # Clicked side gets replaced with nearest; other stays where it was.
     if position == "left":
-        id_left, id_right = nearest_neighbor.id, embedding_other.id
+        id_left, id_right = nearest_id, other_id
     else:
-        id_left, id_right = embedding_other.id, nearest_neighbor.id
+        id_left, id_right = other_id, nearest_id
 
     return _next_pair_response(session_id, id_left, id_right)
+
+
+@app.route("/like_image", methods=["POST"])
+def like_image():
+    """ Save image as 'reviewed_keep' and display nearest neighbor. """
+    return _review_clicked_and_advance("reviewed_keep")
 
 
 @app.route("/drop_image", methods=["POST"])
 def drop_image():
     """ Save image as 'reviewed_discard' and display nearest neighbor. """
-    clicked_id = request.json.get("clickedImageId")
-    other_id = request.json.get("otherImageId")
-    position = request.json.get("position")
-    session_id = request.json.get("session_id")
-
-    update_image_status(clicked_id, set_status_to="reviewed_discard")
-
-    if other_id is None:
-        return jsonify({"status": "completed"})
-
-    embedding_other = get_embedding(other_id)
-    nearest_neighbor = get_nearest_neighbor(session_id, embedding_other.id)
-
-    if position == "left":
-        id_left, id_right = nearest_neighbor.id, embedding_other.id
-    else:
-        id_left, id_right = embedding_other.id, nearest_neighbor.id
-
-    return _next_pair_response(session_id, id_left, id_right)
+    return _review_clicked_and_advance("reviewed_discard")
 
 
 @app.route("/continue_from", methods=["POST"])
@@ -430,17 +439,16 @@ def continue_from():
     update_image_status(clicked_id, set_status_to="reviewed_keep")
     update_image_status(other_id, set_status_to="reviewed_discard")
 
-    embedding_clicked = get_embedding(clicked_id)
-    nearest_neighbor = get_nearest_neighbor(session_id, embedding_clicked.id)
+    nearest_neighbor = get_nearest_neighbor(session_id, clicked_id)
 
-    if nearest_neighbor.preview_path == "endofline":
+    if nearest_neighbor is None:  # both displayed images are reviewed and nothing is left
         return jsonify({"status": "completed"})
 
     # Clicked stays on its side; nearest appears opposite.
     if position == "left":
-        id_left, id_right = embedding_clicked.id, nearest_neighbor.id
+        id_left, id_right = clicked_id, nearest_neighbor.id
     else:
-        id_left, id_right = nearest_neighbor.id, embedding_clicked.id
+        id_left, id_right = nearest_neighbor.id, clicked_id
 
     return _next_pair_response(session_id, id_left, id_right)
 
@@ -452,11 +460,14 @@ def next_candidates():
     Given the current (left, right) pair, computes:
       - next_if_stays_left  = nearestOf(left)  excluding right  — covers continue-from-left, like-right, drop-right.
       - next_if_stays_right = nearestOf(right) excluding left   — covers continue-from-right, like-left, drop-left.
-    Returns null for either side when the nearest is the endofline sentinel (frontend skips prefetch).
+    Returns null for either side when nothing is left to prefetch (frontend skips it).
     """
     session_id = request.args.get("session_id")
     id_left = request.args.get("id_left")
     id_right = request.args.get("id_right")
+
+    if not id_left or not id_right:  # one side is already empty, there is nothing to warm up
+        return jsonify({"next_if_stays_left": None, "next_if_stays_right": None})
 
     try:
         if_stays_left = get_nearest_neighbor(session_id, id_left, exclude_ids=[id_right])
@@ -466,7 +477,7 @@ def next_candidates():
         return jsonify({"next_if_stays_left": None, "next_if_stays_right": None})
 
     def real_id(emb):
-        return None if emb.preview_path == "endofline" else emb.id
+        return emb.id if emb is not None else None
 
     return jsonify({
         "next_if_stays_left": real_id(if_stays_left),
@@ -489,7 +500,12 @@ def open_session():
 
     session = get_session(session_id)
 
-    if not session.last_viewed_left:  # this is the initial starting case when a session is newly created
+    # Drop ids that cannot be displayed any more (never viewed, or a legacy endofline sentinel).
+    img_id_left = resolve_visible_id(session.last_viewed_left)
+    img_id_right = resolve_visible_id(session.last_viewed_right)
+
+    if img_id_left is None and img_id_right is None:
+        # Newly created session, or a stored pair that no longer resolves to real images.
         random_starting_image = get_random_starting_image(session_id)
         if random_starting_image is None:
             # Session has no reviewable images (e.g. every file failed to import).
@@ -497,11 +513,9 @@ def open_session():
             return jsonify({"error": "no_images"}), 422
         nearest_neighbor = get_nearest_neighbor(session_id, random_starting_image.id)
         img_id_left = random_starting_image.id
-        img_id_right = nearest_neighbor.id
+        img_id_right = nearest_neighbor.id if nearest_neighbor is not None else None
         logging.info(f"Starting from random image {img_id_left} and nearest neighbor {img_id_right}")
     else:
-        img_id_left = session.last_viewed_left
-        img_id_right = session.last_viewed_right
         logging.info(f"Starting from last viewed images {img_id_left} and {img_id_right}")
 
     update_last_viewed(session_id, img_id_left, img_id_right)
@@ -526,7 +540,7 @@ def overview():
 
     for session in sessions_list:
         embeddings = (
-            Embedding.query.filter(Embedding.session_id == session.id, Embedding.preview_path != "endofline")
+            Embedding.query.filter(Embedding.session_id == session.id, Embedding.preview_path != ENDOFLINE)
             .limit(3)
             .all()
         )
@@ -565,6 +579,7 @@ def create_session_from_directory():
     file_client.create_dir()
 
     count = 0
+    failed_count = 0
     for filename in sorted(os.listdir(directory)):
         ext = os.path.splitext(filename)[1].lower()
         if ext not in IMAGE_EXTENSIONS:
@@ -578,14 +593,17 @@ def create_session_from_directory():
             add_embedding(str(session.id), thumbnail_path, preview_path, display_path, filepath, embedding)
             count += 1
         except Exception as e:
+            failed_count += 1
             logging.error(f"Failed to process {filepath}: {e}")
 
-    add_embedding(
-        str(session.id), "endofline", "endofline", "endofline", "endofline",
-        np.random.rand(384) * -1000,
-    )
+    if count == 0:
+        # Nothing usable in there - don't leave an empty session behind for the user to clean up.
+        logging.error(f"No supported images imported from {directory}, discarding session {session.id}.")
+        remove_session_from_db(str(session.id))
+        file_client.remove_directory()
+        return jsonify({"error": "no_supported_images", "failed_count": failed_count}), 400
 
-    return jsonify({"session_id": str(session.id), "image_count": count})
+    return jsonify({"session_id": str(session.id), "image_count": count, "failed_count": failed_count})
 
 
 @app.route("/download", methods=["GET"])

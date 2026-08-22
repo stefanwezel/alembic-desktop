@@ -21,7 +21,8 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
 ### Key domain patterns
 
 - **Image status lifecycle**: `unreviewed` → `reviewed_keep` or `reviewed_discard`. The decision view shows two images; the user keeps, drops, or "continues from" one.
-- **Endofline sentinel**: When no unreviewed images remain, `get_nearest_neighbor` returns a synthetic `Embedding` with all paths set to `"endofline"`. Frontend and backend both check for this to trigger session completion.
+- **End of a sweep**: `get_nearest_neighbor` returns `None` once nothing unreviewed is left. The next-pair payload then carries `null` for the side that has no image; the frontend renders the end-of-line placeholder there and wires up no buttons or shortcuts for it, so the last remaining image can still be reviewed. Reviewing that image returns `{"status": "completed"}`.
+- **Legacy endofline rows**: Sessions created before that change contain a synthetic `Embedding` with every path set to `"endofline"` (the `ENDOFLINE` constant in `app.py`). Nothing creates them any more; they are filtered out of every query and can never be reviewed or exported.
 - **Schema versioning**: `AppMetadata` table stores `schema_version`. When `CURRENT_SCHEMA_VERSION` (in `app.py`) changes, all sessions and embeddings are wiped on startup to avoid incompatible data.
 
 ## Development Commands

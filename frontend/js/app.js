@@ -168,7 +168,7 @@ async function openSession(sessionId, progress) {
     }
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
-    loadDecision(sessionId, String(data.img_id_left), String(data.img_id_right));
+    loadDecision(sessionId, data.img_id_left, data.img_id_right);
   } catch (e) {
     console.error("Error opening session:", e);
     alert("Could not open this session. Please try again.");
@@ -294,9 +294,21 @@ async function createSessionFromDirectory() {
       body: JSON.stringify({ directory: dir }),
     });
     if (!res.ok) {
-      const err = await res.json();
-      alert(`Error: ${err.error || "Failed to create session."}`);
+      const err = await res.json().catch(() => ({}));
+      if (err.error === "no_supported_images") {
+        alert(
+          "No images could be read from that folder.\n\n" +
+          "Supported formats: JPG, PNG, TIFF and RAW (DNG, CR2, NEF, ARW). Subfolders are not scanned."
+        );
+      } else {
+        alert(`Error: ${err.error || "Failed to create session."}`);
+      }
       return;
+    }
+    const data = await res.json();
+    if (data.failed_count) {
+      alert(`Imported ${data.image_count} of ${data.image_count + data.failed_count} images. ` +
+            `${data.failed_count} file(s) could not be read and were skipped.`);
     }
     loadOverview();
   } catch (e) {
@@ -356,9 +368,10 @@ function loadDecision(sessionId, idLeft, idRight) {
   renderImage("left", idLeft);
   renderImage("right", idRight);
 
-  // Setup controls for each side
-  setupImageControls("left", leftImg, idLeft, idRight);
-  setupImageControls("right", rightImg, idRight, idLeft);
+  // Setup controls for each side. An empty side shows the end-of-line placeholder and
+  // gets no buttons and no keyboard shortcuts, so it can never be reviewed.
+  if (idLeft) setupImageControls("left", leftImg, idLeft, idRight);
+  if (idRight) setupImageControls("right", rightImg, idRight, idLeft);
 
   // R key resets zoom on both images
   const resetHandler = (event) => {
@@ -371,7 +384,7 @@ function loadDecision(sessionId, idLeft, idRight) {
   decisionKeydownHandlers.push(resetHandler);
 
   // Warm the preview cache with the two most-likely next images
-  prefetchNext(sessionId, idLeft, idRight);
+  if (idLeft && idRight) prefetchNext(sessionId, idLeft, idRight);
 }
 
 function setupImageControls(side, img, clickedId, otherId) {
@@ -546,6 +559,13 @@ async function renderImage(side, imgId) {
   const img = document.getElementById(`img-${side}`);
   currentRenderIds[side] = imgId;
 
+  if (!imgId) {
+    // No image left for this side — show the end-of-line placeholder instead.
+    img.removeAttribute("src");
+    showNotFoundOverlay(img.parentElement);
+    return;
+  }
+
   try {
     const entry = await fetchPreviewEntry(imgId);
     if (currentRenderIds[side] !== imgId) return; // stale
@@ -588,7 +608,7 @@ async function updateImages(route, sessionId, position, clickedImageId, otherIma
     if (data.status === "completed") {
       showView("completed");
     } else if (data.status === "next") {
-      loadDecision(sessionId, String(data.img_id_left), String(data.img_id_right));
+      loadDecision(sessionId, data.img_id_left, data.img_id_right);
     } else {
       console.error("Unexpected action response:", data);
     }

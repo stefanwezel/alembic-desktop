@@ -17,6 +17,12 @@ except RuntimeError as e:
     raise e
 
 
+RAW_EXTENSIONS = {".dng", ".cr2", ".nef", ".arw"}
+JPEG_EXTENSIONS = {".jpg", ".jpeg"}
+OTHER_IMAGE_EXTENSIONS = {".png", ".tif", ".tiff"}
+SUPPORTED_EXTENSIONS = RAW_EXTENSIONS | JPEG_EXTENSIONS | OTHER_IMAGE_EXTENSIONS
+
+
 class FileClient:
     """Class to handle file operations such as creating, removing and zipping directories."""
 
@@ -124,17 +130,35 @@ def load_jpeg_fast(image_path):
     return img_array
 
 
+def get_extension(img_path: str) -> str:
+    return os.path.splitext(img_path)[1].lower()
+
+
+def load_raw(img_path: str) -> np.ndarray:
+    """Decode a RAW file (DNG, CR2, NEF, ARW) to an 8-bit BGR array."""
+    with rawpy.imread(img_path) as raw:
+        image = raw.postprocess()
+    return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)  # rawpy returns RGB, OpenCV works in BGR
+
+
+def load_generic_image(img_path: str) -> np.ndarray:
+    """Decode PNG/TIFF (and anything else OpenCV or Pillow understands) to an 8-bit BGR array."""
+    image = cv2.imread(img_path, cv2.IMREAD_COLOR)
+    if image is None:  # cv2 returns None rather than raising, e.g. for non-ASCII paths on Windows
+        with Image.open(img_path) as pil_image:
+            image = cv2.cvtColor(np.array(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
+    return image
+
+
 def load_image(img_path: str) -> np.ndarray:
     assert os.path.exists(img_path)
 
-    if img_path.endswith(("dng", "DNG")):
-        with rawpy.imread(img_path) as raw:
-            image = raw.postprocess()
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert the image to BGR format (OpenCV default)
-    else:
-        image = load_jpeg_fast(img_path)
-
-    return image
+    extension = get_extension(img_path)
+    if extension in RAW_EXTENSIONS:
+        return load_raw(img_path)
+    if extension in JPEG_EXTENSIONS:
+        return load_jpeg_fast(img_path)
+    return load_generic_image(img_path)
 
 
 def save_image(img: np.ndarray, save_path: str) -> None:
@@ -179,7 +203,7 @@ def prepare_image(
     image = load_image(input_path)
     stem = os.path.splitext(os.path.basename(input_path))[0]
 
-    if input_path.lower().endswith(("jpg", "jpeg")):  # for jpegs, we have to apply the correct transformation
+    if get_extension(input_path) in JPEG_EXTENSIONS:  # for jpegs, we have to apply the correct transformation
         orientation = get_orientation(input_path)
         image = transpose_image(image, orientation)
         display_path = input_path
