@@ -326,3 +326,34 @@ def test_directory_path_with_a_tilde_is_expanded(client, tmp_path, monkeypatch):
 
     assert response.status_code == 200, response.get_json()
     assert response.get_json()["image_count"] == 1
+
+
+def test_prefetch_agrees_with_the_neighbour_search_it_predicts(client, tmp_path):
+    """next_candidates computes both sides from one fetch; it must still match get_nearest_neighbor."""
+    session_id = create_session(client, tmp_path, [f"img{i}.jpg" for i in range(6)])
+    opened = client.get(f"/open_session?session_id={session_id}").get_json()
+    id_left, id_right = opened["img_id_left"], opened["img_id_right"]
+
+    prefetched = client.get(
+        f"/next_candidates?session_id={session_id}&id_left={id_left}&id_right={id_right}"
+    ).get_json()
+
+    with alembic_app.app.app_context():
+        expected_left = alembic_app.get_nearest_neighbor(session_id, id_left, exclude_ids=[id_right])
+        expected_right = alembic_app.get_nearest_neighbor(session_id, id_right, exclude_ids=[id_left])
+    assert prefetched["next_if_stays_left"] == expected_left.id
+    assert prefetched["next_if_stays_right"] == expected_right.id
+    assert prefetched["next_if_stays_left"] not in (id_left, id_right)
+    assert prefetched["next_if_stays_right"] not in (id_left, id_right)
+
+
+def test_prefetch_returns_nulls_once_nothing_is_left(client, tmp_path):
+    session_id = create_session(client, tmp_path, ["img0.jpg", "img1.jpg"])
+    opened = client.get(f"/open_session?session_id={session_id}").get_json()
+    id_left, id_right = opened["img_id_left"], opened["img_id_right"]
+
+    prefetched = client.get(
+        f"/next_candidates?session_id={session_id}&id_left={id_left}&id_right={id_right}"
+    ).get_json()
+
+    assert prefetched == {"next_if_stays_left": None, "next_if_stays_right": None}

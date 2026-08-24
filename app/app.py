@@ -4,7 +4,7 @@ import os
 import random
 import sys
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -223,6 +223,43 @@ def get_session(session_id: str) -> Optional[Session]:
     return Session.query.filter_by(id=session_id).first()
 
 
+def load_unreviewed_vectors(session_id: str) -> Tuple[List[str], np.ndarray]:
+    """Every unreviewed image of a session as (ids, vectors), the vectors stacked into one array.
+
+    Only the id and the blob are fetched: materialising whole rows built an ORM object per image,
+    which dominated the cost of a click on a large session.
+    """
+    rows = (
+        db.session.query(Embedding.id, Embedding.embedding_blob)
+        .filter(
+            Embedding.session_id == session_id,
+            Embedding.status == "unreviewed",
+            Embedding.preview_path != ENDOFLINE,
+        )
+        .all()
+    )
+    if not rows:
+        return [], np.empty((0, 0), dtype=np.float32)
+
+    ids = [row[0] for row in rows]
+    vectors = np.frombuffer(b"".join(row[1] for row in rows), dtype=np.float32).reshape(len(rows), -1)
+    return ids, vectors
+
+
+def nearest_id(ids: List[str], vectors: np.ndarray, query_vec: np.ndarray, excluded) -> Optional[str]:
+    """Id of the vector closest to query_vec in L2, skipping `excluded`. None when none is left."""
+    if not ids:
+        return None
+
+    distances = np.square(vectors - query_vec).sum(axis=1)
+    for index, image_id in enumerate(ids):
+        if image_id in excluded:
+            distances[index] = np.inf
+
+    nearest = int(np.argmin(distances))
+    return ids[nearest] if np.isfinite(distances[nearest]) else None
+
+
 def get_nearest_neighbor(session_id: str, query_image_id: str, exclude_ids=None) -> Optional[Embedding]:
     """Get the nearest unreviewed neighbor to the query image using numpy L2 distance.
 
@@ -230,22 +267,14 @@ def get_nearest_neighbor(session_id: str, query_image_id: str, exclude_ids=None)
     currently-displayed image during a speculative prefetch).
     Returns None when the session holds no further image to show.
     """
-    query_emb = Embedding.query.filter_by(id=query_image_id).one()
-    query_vec = query_emb.get_embedding()
-
-    excluded = set(exclude_ids or []) | {query_image_id}
-
-    candidates = Embedding.query.filter(
-        Embedding.session_id == session_id,
-        ~Embedding.id.in_(excluded),
-        Embedding.status == "unreviewed",
-        Embedding.preview_path != ENDOFLINE,
-    ).all()
-
-    if not candidates:
+    query_emb = get_embedding(query_image_id)
+    if query_emb is None:
         return None
 
-    return min(candidates, key=lambda c: np.linalg.norm(c.get_embedding() - query_vec))
+    ids, vectors = load_unreviewed_vectors(session_id)
+    excluded = set(exclude_ids or []) | {query_image_id}
+    nearest = nearest_id(ids, vectors, query_emb.get_embedding(), excluded)
+    return get_embedding(nearest) if nearest is not None else None
 
 
 def resolve_visible_id(image_id: Optional[str]) -> Optional[str]:
@@ -463,19 +492,21 @@ def next_candidates():
         return jsonify({"next_if_stays_left": None, "next_if_stays_right": None})
 
     try:
-        if_stays_left = get_nearest_neighbor(session_id, id_left, exclude_ids=[id_right])
-        if_stays_right = get_nearest_neighbor(session_id, id_right, exclude_ids=[id_left])
+        query_left = get_embedding(id_left)
+        query_right = get_embedding(id_right)
+        if query_left is None or query_right is None:
+            return jsonify({"next_if_stays_left": None, "next_if_stays_right": None})
+
+        # Both answers come out of one fetch; the candidate set is the same for either side.
+        ids, vectors = load_unreviewed_vectors(session_id)
+        on_screen = {id_left, id_right}
+        if_stays_left = nearest_id(ids, vectors, query_left.get_embedding(), on_screen)
+        if_stays_right = nearest_id(ids, vectors, query_right.get_embedding(), on_screen)
     except Exception as e:
         logging.error(f"next_candidates failed: {e}")
         return jsonify({"next_if_stays_left": None, "next_if_stays_right": None})
 
-    def real_id(emb):
-        return emb.id if emb is not None else None
-
-    return jsonify({
-        "next_if_stays_left": real_id(if_stays_left),
-        "next_if_stays_right": real_id(if_stays_right),
-    })
+    return jsonify({"next_if_stays_left": if_stays_left, "next_if_stays_right": if_stays_right})
 
 
 @app.route("/has_been_downloaded", methods=["GET"])
