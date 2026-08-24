@@ -207,3 +207,51 @@ def test_import_reports_files_it_could_not_read(client, tmp_path):
 
     assert payload["image_count"] == 1
     assert payload["failed_count"] == 1
+
+
+def test_export_writes_the_archive_to_a_chosen_destination(client, tmp_path):
+    filenames = [f"img{i}.jpg" for i in range(3)]
+    session_id = create_session(client, tmp_path, filenames)
+    sweep(client, session_id, "/like_image")
+    destination = tmp_path / "exports" / "selection.zip"
+    destination.parent.mkdir()
+
+    response = client.post("/download", json={"session_id": session_id, "destination": str(destination)})
+
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["path"] == str(destination)
+    with zipfile.ZipFile(destination) as archive:
+        assert sorted(archive.namelist()) == sorted(filenames)
+
+
+@pytest.mark.parametrize(
+    "destination, expected_error",
+    [
+        ("relative/selection.zip", "destination_not_absolute"),
+        ("/nonexistent-directory-for-tests/selection.zip", "destination_directory_missing"),
+    ],
+)
+def test_export_rejects_unusable_destinations(client, tmp_path, destination, expected_error):
+    session_id = create_session(client, tmp_path, ["img0.jpg", "img1.jpg"])
+    sweep(client, session_id, "/like_image")
+
+    response = client.post("/download", json={"session_id": session_id, "destination": destination})
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == expected_error
+
+
+def test_a_failed_export_leaves_no_partial_archive_behind(client, tmp_path):
+    session_id = create_session(client, tmp_path, ["img0.jpg", "img1.jpg"])
+    sweep(client, session_id, "/like_image")
+    with alembic_app.app.app_context():
+        kept = alembic_app.get_images_to_keep(session_id)
+    os.remove(kept[0])  # e.g. the source folder lived on a drive that has since been unplugged
+    destination = tmp_path / "selection.zip"
+
+    response = client.post("/download", json={"session_id": session_id, "destination": str(destination)})
+
+    assert response.status_code == 500
+    assert response.get_json()["error"] == "export_failed"
+    assert not destination.exists()
+    assert not (tmp_path / "selection.zip.part").exists()

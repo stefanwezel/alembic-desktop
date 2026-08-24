@@ -606,10 +606,37 @@ def create_session_from_directory():
     return jsonify({"session_id": str(session.id), "image_count": count, "failed_count": failed_count})
 
 
-@app.route("/download", methods=["GET"])
+def check_destination(destination: str) -> Optional[str]:
+    """Return an error code if the export cannot be written to `destination`, None if it can."""
+    if not os.path.isabs(destination):
+        return "destination_not_absolute"
+    parent = os.path.dirname(destination)
+    if not os.path.isdir(parent):
+        return "destination_directory_missing"
+    if not os.access(parent, os.W_OK):
+        return "destination_not_writable"
+    return None
+
+
+def mark_downloaded(session_id: str) -> None:
+    if get_percentage_reviewed(session_id) != 100:
+        return
+    session = Session.query.filter_by(id=session_id).one()
+    session.has_been_downloaded = True
+    db.session.commit()
+
+
+@app.route("/download", methods=["GET", "POST"])
 def download_subset():
-    """ Download all images with status 'reviewed_keep'. """
-    session_id = request.args.get("session_id")
+    """Export all images with status 'reviewed_keep'.
+
+    The desktop app posts a `destination` picked with the native save dialog and the archive is
+    written straight there. A full-resolution export does not fit in the webview's memory, so
+    handing it back over HTTP is only for a frontend opened in a plain browser.
+    """
+    payload = request.get_json(silent=True) or {}
+    session_id = payload.get("session_id") or request.args.get("session_id")
+    destination = payload.get("destination")
     file_client = utils.FileClient(media_folder=app.config["MEDIA_FOLDER"], session_id=session_id)
 
     if not os.path.exists(file_client.upload_dir):
@@ -619,16 +646,21 @@ def download_subset():
     if not subset:
         return jsonify({"error": "no_images_selected"}), 400
 
-    zip_filename = file_client.zip_dir(subset)
-
-    if get_percentage_reviewed(session_id) == 100:
+    if destination is not None:
+        error = check_destination(destination)
+        if error:
+            return jsonify({"error": error}), 400
         try:
-            session = Session.query.filter_by(id=session_id).one()
-            session.has_been_downloaded = True
-            db.session.commit()
-        except Exception as e:
-            raise e
+            utils.write_zip(subset, destination)
+        except OSError as e:
+            # A source file moved or the target filled up mid-write - both are the user's to fix.
+            logging.error(f"Could not export session {session_id} to {destination}: {e}")
+            return jsonify({"error": "export_failed", "detail": str(e)}), 500
+        mark_downloaded(session_id)
+        return jsonify({"status": "written", "path": destination, "image_count": len(subset)})
 
+    zip_filename = file_client.zip_dir(subset)
+    mark_downloaded(session_id)
     return send_from_directory(app.config["MEDIA_FOLDER"], zip_filename, as_attachment=True)
 
 

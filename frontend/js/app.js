@@ -176,26 +176,60 @@ async function openSession(sessionId, progress) {
   }
 }
 
+async function askWhereToSave(sessionName) {
+  const { save } = window.__TAURI__.dialog;
+  return save({
+    title: "Export selection",
+    defaultPath: `${sessionName.replace(/[\\/:*?"<>|]/g, "_")}.zip`,
+    filters: [{ name: "Zip archive", extensions: ["zip"] }],
+  });
+}
+
+async function exportToDisk(sessionId, destination) {
+  // The sidecar writes the archive itself: a full-resolution export runs to gigabytes, which does
+  // not survive being pulled through the webview as a blob.
+  const res = await fetch(`${API_BASE}/download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, destination }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.error || `HTTP error ${res.status}`);
+  }
+}
+
+async function exportThroughBrowser(sessionId, sessionName) {
+  const res = await fetch(`${API_BASE}/download?session_id=${sessionId}`);
+  if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+  const url = window.URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sessionName}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+}
+
 async function downloadSession(sessionId, sessionName) {
   const btn = document.getElementById(`downloadButton${sessionId}`);
+  const destination = window.__TAURI__ ? await askWhereToSave(sessionName) : null;
+  if (window.__TAURI__ && !destination) return; // the user cancelled the save dialog
+
   btn.disabled = true;
-  btn.innerHTML = "Preparing...";
+  btn.innerHTML = "Exporting...";
   btn.classList.add("loading");
   try {
-    const res = await fetch(`${API_BASE}/download?session_id=${sessionId}`);
-    if (!res.ok) throw new Error("Download failed!");
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${sessionName}.zip`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    if (destination) {
+      await exportToDisk(sessionId, destination);
+    } else {
+      await exportThroughBrowser(sessionId, sessionName);
+    }
     setTimeout(() => loadOverview(), 2000);
   } catch (e) {
-    console.error("Download failed:", e);
+    console.error("Export failed:", e);
+    alert("Could not export this session. Please try again.");
     btn.disabled = false;
     btn.innerHTML = icon("export") + " Export";
     btn.classList.remove("loading");

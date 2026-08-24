@@ -76,11 +76,7 @@ class FileClient:
 
     def zip_dir(self, image_files: List[str], prefix: str = None) -> str:
         zip_filename: str = f"{prefix}_{self.session_id}.zip" if prefix else f"{self.session_id}.zip"
-        zip_filepath: str = os.path.join(self.media_folder, zip_filename)
-        with ZipFile(zip_filepath, "w") as zip:
-            for file in image_files:
-                zip.write(file, os.path.basename(file))
-
+        write_zip(image_files, os.path.join(self.media_folder, zip_filename))
         return zip_filename
 
     def remove_nonjpg_images(self, paths: List[str]) -> None:
@@ -96,6 +92,20 @@ class FileClient:
         assert os.path.exists(os.path.join(self.media_folder, zip_file))
         with ZipFile(os.path.join(self.media_folder, zip_file), "r") as zip_ref:
             zip_ref.extractall(self.upload_dir)
+
+
+def write_zip(image_files: List[str], zip_path: str) -> None:
+    """Write image_files into a zip at zip_path, leaving no half-written file behind on failure."""
+    partial_path = f"{zip_path}.part"
+    try:
+        with ZipFile(partial_path, "w") as archive:
+            for file in image_files:
+                archive.write(file, os.path.basename(file))
+        os.replace(partial_path, zip_path)
+    except Exception:
+        if os.path.exists(partial_path):
+            os.remove(partial_path)
+        raise
 
 
 def generate_jpg_path(dng_path: str) -> str:
