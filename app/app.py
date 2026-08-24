@@ -5,6 +5,7 @@ import random
 import sys
 import uuid
 from typing import List, Optional, Tuple
+from urllib.parse import urlparse
 
 import cv2
 import numpy as np
@@ -71,6 +72,34 @@ def create_app():
 app = create_app()
 CORS(app)
 db = SQLAlchemy(app)
+
+# Origins the desktop shell can actually load the frontend from. The webview uses tauri://localhost
+# (http://tauri.localhost on Windows) and the dev server http://localhost:8080.
+LOCAL_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "::1", "tauri.localhost"}
+
+
+def is_local_origin(origin: str) -> bool:
+    """Whether a browser Origin header belongs to this app rather than to some website."""
+    if origin in ("", "null"):
+        return True  # not a browser request at all, or a webview that sends no origin of its own
+    parsed = urlparse(origin)
+    if parsed.scheme not in ("http", "https"):
+        return True  # tauri:// and the other custom schemes are the shell itself
+    return parsed.hostname in LOCAL_ORIGIN_HOSTS
+
+
+@app.before_request
+def reject_foreign_origins():
+    """Keep websites the user happens to have open from driving the API.
+
+    The sidecar listens on a fixed port, so any page could otherwise list the user's sessions,
+    read the images they point at and delete them. Binding to 127.0.0.1 is no defense: the
+    requests come from the user's own browser.
+    """
+    origin = request.headers.get("Origin", "")
+    if not is_local_origin(origin):
+        logging.warning(f"Rejected {request.method} {request.path} from origin {origin}.")
+        return jsonify({"error": "foreign_origin"}), 403
 
 
 class User(db.Model):
@@ -694,7 +723,7 @@ def download_subset():
     return send_from_directory(app.config["MEDIA_FOLDER"], zip_filename, as_attachment=True)
 
 
-@app.route("/drop_session/<string:session_id>")
+@app.route("/drop_session/<string:session_id>", methods=["POST"])
 def drop_session(session_id):
     """Remove entries in 'embeddings' and 'sessions', remove related files."""
     if get_session(session_id) is None:

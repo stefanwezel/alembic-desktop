@@ -238,7 +238,7 @@ async function downloadSession(sessionId, sessionName) {
 
 async function dropSession(sessionId) {
   try {
-    await fetch(`${API_BASE}/drop_session/${sessionId}`);
+    await fetch(`${API_BASE}/drop_session/${sessionId}`, { method: "POST" });
     loadOverview();
   } catch (e) {
     console.error("Error dropping session:", e);

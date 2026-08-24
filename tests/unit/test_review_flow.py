@@ -279,11 +279,14 @@ def test_same_name_different_format_get_their_own_cache_files(client, tmp_path):
         "/serve_image?img_id=00000000-0000-0000-0000-000000000000&version=preview",
         "/has_been_downloaded?session_id=00000000-0000-0000-0000-000000000000",
         "/open_session?session_id=00000000-0000-0000-0000-000000000000",
-        "/drop_session/00000000-0000-0000-0000-000000000000",
     ],
 )
 def test_unknown_ids_are_not_found_rather_than_server_errors(client, route):
     assert client.get(route).status_code == 404
+
+
+def test_dropping_an_unknown_session_is_not_found(client):
+    assert client.post("/drop_session/00000000-0000-0000-0000-000000000000").status_code == 404
 
 
 def test_dropping_a_session_removes_its_cache_and_can_be_repeated(client, tmp_path):
@@ -291,11 +294,11 @@ def test_dropping_a_session_removes_its_cache_and_can_be_repeated(client, tmp_pa
     cache_dir = os.path.join(alembic_app.app.config["MEDIA_FOLDER"], session_id)
     assert os.path.isdir(cache_dir)
 
-    assert client.get(f"/drop_session/{session_id}").status_code == 200
+    assert client.post(f"/drop_session/{session_id}").status_code == 200
     assert not os.path.exists(cache_dir)
 
     # The session is gone, so a repeat (a double click, a stale overview) is a 404, never a 500.
-    assert client.get(f"/drop_session/{session_id}").status_code == 404
+    assert client.post(f"/drop_session/{session_id}").status_code == 404
 
 
 def test_cache_of_wiped_sessions_is_pruned_but_live_sessions_are_kept(client, tmp_path):
@@ -357,3 +360,31 @@ def test_prefetch_returns_nulls_once_nothing_is_left(client, tmp_path):
     ).get_json()
 
     assert prefetched == {"next_if_stays_left": None, "next_if_stays_right": None}
+
+
+@pytest.mark.parametrize("origin", ["http://localhost:8080", "tauri://localhost", "http://tauri.localhost", "null", ""])
+def test_the_app_s_own_origins_are_served(client, origin):
+    response = client.get("/overview", headers={"Origin": origin} if origin else {})
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("origin", ["https://example.com", "http://evil.test:8080", "http://localhost.evil.com"])
+def test_websites_cannot_reach_the_api(client, tmp_path, origin):
+    """A page the user has open must not be able to list sessions or delete one."""
+    session_id = create_session(client, tmp_path, ["img0.jpg"])
+
+    assert client.get("/overview", headers={"Origin": origin}).status_code == 403
+    assert client.post(f"/drop_session/{session_id}", headers={"Origin": origin}).status_code == 403
+    assert client.get(f"/open_session?session_id={session_id}", headers={"Origin": origin}).status_code == 403
+
+    # and the session is still there afterwards
+    assert client.post(f"/drop_session/{session_id}").status_code == 200
+
+
+def test_session_deletion_is_not_reachable_by_a_plain_get(client, tmp_path):
+    """A GET can be fired from a cross-site <img> tag, which sends no Origin header at all."""
+    session_id = create_session(client, tmp_path, ["img0.jpg"])
+
+    assert client.get(f"/drop_session/{session_id}").status_code == 405
+    assert client.get("/overview").get_json()["sessions"]
