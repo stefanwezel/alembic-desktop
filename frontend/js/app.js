@@ -34,15 +34,51 @@ let currentIdRight = null;
 
 // ─── Overview ──────────────────────────────────────────────────────────────────
 
+// The sidecar unpacks ~100 MB before it starts listening, so on a cold start the first overview
+// requests fail. Keep asking rather than leaving the user with an empty window.
+const STARTUP_RETRY_INTERVAL_MS = 1000;
+const STARTUP_RETRY_LIMIT = 60;
+let startupRetries = 0;
+let startupRetryTimer = null;
+
 async function loadOverview() {
   showView("overview");
+  clearTimeout(startupRetryTimer);
   try {
     const res = await fetch(`${API_BASE}/overview`);
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
+    startupRetries = 0;
     renderOverview(data);
   } catch (e) {
     console.error("Error loading overview:", e);
+    if (startupRetries < STARTUP_RETRY_LIMIT) {
+      startupRetries += 1;
+      renderStartupMessage("Starting Alembic...", false);
+      startupRetryTimer = setTimeout(loadOverview, STARTUP_RETRY_INTERVAL_MS);
+    } else {
+      renderStartupMessage("Could not reach the Alembic service.", true);
+    }
   }
+}
+
+function renderStartupMessage(message, offerRetry) {
+  const container = document.getElementById("sessions-list");
+  container.innerHTML = "";
+  const notice = document.createElement("div");
+  notice.className = "session-container";
+  notice.textContent = message;
+  container.appendChild(notice);
+  if (!offerRetry) return;
+
+  const retry = document.createElement("button");
+  retry.className = "new-session-button";
+  retry.textContent = "Try again";
+  retry.addEventListener("click", () => {
+    startupRetries = 0;
+    loadOverview();
+  });
+  notice.appendChild(retry);
 }
 
 function renderOverview(data) {

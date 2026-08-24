@@ -9,6 +9,14 @@ struct SidecarChild(Mutex<Option<CommandChild>>);
 /// How long the sidecar gets to exit on its own before we force-kill it.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 
+/// Show the window after this long even if the API has not answered yet, so that a slow cold start
+/// looks like a loading app rather than a hang. The frontend retries the API on its own.
+const SHOW_WINDOW_AFTER: Duration = Duration::from_secs(10);
+
+/// Stop polling the API after this long. A onefile sidecar unpacks ~100 MB before it listens, which
+/// on a cold cache and a slow disk is a lot more than the ten seconds this used to allow.
+const READY_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Ask the sidecar to exit on its own.
 ///
 /// The sidecar is a PyInstaller onefile bundle: the process we spawned is the bootloader, and the
@@ -45,6 +53,50 @@ fn request_shutdown(pid: u32) {
 fn is_running(_pid: u32) -> bool {
     // taskkill returns once the tree is gone, so there is nothing left to wait for.
     false
+}
+
+async fn log_sidecar_output(mut rx: tauri::async_runtime::Receiver<CommandEvent>) {
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(line) => println!("API: {}", String::from_utf8_lossy(&line)),
+            CommandEvent::Stderr(line) => eprintln!("API ERR: {}", String::from_utf8_lossy(&line)),
+            _ => {}
+        }
+    }
+}
+
+async fn show_window_when_ready(window: tauri::WebviewWindow) {
+    let client = reqwest::Client::new();
+    let started = Instant::now();
+    let mut shown = false;
+
+    loop {
+        let ready = matches!(
+            client.get("http://localhost:3001/").send().await,
+            Ok(response) if response.status().is_success()
+        );
+        if ready {
+            println!("API ready after {:?}, showing window", started.elapsed());
+            // The page may already have loaded and failed to reach the API by now.
+            let _ = window.eval("if (typeof loadOverview === 'function') loadOverview();");
+            let _ = window.show();
+            return;
+        }
+
+        let waited = started.elapsed();
+        if waited >= READY_TIMEOUT {
+            eprintln!("API never became ready; the frontend keeps retrying on its own");
+            let _ = window.show();
+            return;
+        }
+        if !shown && waited >= SHOW_WINDOW_AFTER {
+            eprintln!("API not ready after {SHOW_WINDOW_AFTER:?}, showing the window anyway");
+            let _ = window.show();
+            shown = true;
+        }
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
 }
 
 fn shutdown_sidecar(app: &tauri::AppHandle) {
@@ -84,55 +136,23 @@ pub fn run() {
             let window = app.get_webview_window("main").unwrap();
             window.hide().unwrap();
 
-            let sidecar_command = app
+            match app
                 .shell()
                 .sidecar("alembic-api")
-                .expect("failed to create sidecar command");
-            let (mut rx, child) = sidecar_command.spawn().expect("failed to spawn sidecar");
-
-            // Store child handle for shutdown
-            app.manage(SidecarChild(Mutex::new(Some(child))));
-
-            // Log sidecar stdout/stderr
-            tauri::async_runtime::spawn(async move {
-                while let Some(event) = rx.recv().await {
-                    match event {
-                        CommandEvent::Stdout(line) => {
-                            println!("API: {}", String::from_utf8_lossy(&line));
-                        }
-                        CommandEvent::Stderr(line) => {
-                            eprintln!("API ERR: {}", String::from_utf8_lossy(&line));
-                        }
-                        _ => {}
-                    }
+                .and_then(|command| command.spawn())
+            {
+                Ok((rx, child)) => {
+                    app.manage(SidecarChild(Mutex::new(Some(child))));
+                    tauri::async_runtime::spawn(log_sidecar_output(rx));
+                    tauri::async_runtime::spawn(show_window_when_ready(window));
                 }
-            });
-
-            // Poll health endpoint, then show window
-            let window_clone = window.clone();
-            tauri::async_runtime::spawn(async move {
-                let client = reqwest::Client::new();
-                let mut ready = false;
-                for _ in 0..50 {
-                    // 50 * 200ms = 10s timeout
-                    match client.get("http://localhost:3001/").send().await {
-                        Ok(resp) if resp.status().is_success() => {
-                            ready = true;
-                            break;
-                        }
-                        _ => {}
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                Err(error) => {
+                    // There is nothing to wait for. Show the window anyway so the frontend can
+                    // report the failure, rather than leaving a dock icon and no window at all.
+                    eprintln!("Failed to start the sidecar: {error}");
+                    let _ = window.show();
                 }
-                if ready {
-                    println!("API ready, showing window");
-                    let _ = window_clone
-                        .eval("if (typeof loadOverview === 'function') loadOverview();");
-                } else {
-                    eprintln!("API failed to become ready within 10s, showing window anyway");
-                }
-                let _ = window_clone.show();
-            });
+            }
 
             Ok(())
         })
