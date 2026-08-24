@@ -10,14 +10,17 @@ sys.path.append(app_dir)
 import utils
 
 
+FILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files")
+
+
 @pytest.fixture
 def jpg_dir():
-    return "tests/unit/files/jpgs"
+    return os.path.join(FILES_DIR, "jpgs")
 
 
 @pytest.fixture
 def dng_dir():
-    return "tests/unit/files/dngs"
+    return os.path.join(FILES_DIR, "dngs")
 
 
 def test_load_image_jpg(jpg_dir):
@@ -102,16 +105,13 @@ def test_resize_image(jpg_dir):
 def test_prepare_image_jpg(jpg_dir, tmpdir):
     for file in os.listdir(jpg_dir):
         input_path = os.path.join(jpg_dir, file)
-        display_path, preview_path, thumbnail_path, numpy_image = utils.prepare_image(input_path)
+        display_path, thumbnail_path, preview_path, numpy_image = utils.prepare_image(
+            input_path, output_dir=str(tmpdir)
+        )
 
+        assert display_path == input_path, "a jpeg is displayed straight from the source file"
         assert os.path.exists(thumbnail_path), f"Output image {thumbnail_path} not created."
-        os.remove(thumbnail_path)
-        assert not os.path.exists(thumbnail_path)
-
         assert os.path.exists(preview_path), f"Output image {preview_path} not created."
-        os.remove(preview_path)
-        assert not os.path.exists(preview_path)
-
         assert numpy_image.shape[-1] == 3
 
 
@@ -142,18 +142,13 @@ def test_prepare_image_jpg_without_orientation(tmpdir):
 def test_prepare_image_dng(dng_dir, tmpdir):
     for file in os.listdir(dng_dir):
         input_path = os.path.join(dng_dir, file)
-        display_path, preview_path, thumbnail_path, numpy_image = utils.prepare_image(input_path)
+        display_path, thumbnail_path, preview_path, numpy_image = utils.prepare_image(
+            input_path, output_dir=str(tmpdir)
+        )
 
-        assert os.path.exists(thumbnail_path), f"Output image {thumbnail_path} not created."
-        os.remove(thumbnail_path)
-        assert not os.path.exists(thumbnail_path)
-
-        assert os.path.exists(preview_path), f"Output image {preview_path} not created."
-        os.remove(preview_path)
-        assert not os.path.exists(preview_path)
-
+        # A RAW file gets a jpeg twin in the cache; the source is never touched.
+        assert os.path.dirname(display_path) == str(tmpdir)
         assert os.path.exists(display_path), f"Output image {display_path} not created."
-        os.remove(display_path)
-        assert not os.path.exists(display_path)
-
+        assert os.path.exists(thumbnail_path), f"Output image {thumbnail_path} not created."
+        assert os.path.exists(preview_path), f"Output image {preview_path} not created."
         assert numpy_image.shape[-1] == 3

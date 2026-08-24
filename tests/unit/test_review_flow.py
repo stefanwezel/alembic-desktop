@@ -271,3 +271,28 @@ def test_same_name_different_format_get_their_own_cache_files(client, tmp_path):
 
     previews = [open(embedding.preview_path, "rb").read() for embedding in embeddings]
     assert previews[0] != previews[1]
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "/serve_image?img_id=00000000-0000-0000-0000-000000000000&version=preview",
+        "/has_been_downloaded?session_id=00000000-0000-0000-0000-000000000000",
+        "/open_session?session_id=00000000-0000-0000-0000-000000000000",
+        "/drop_session/00000000-0000-0000-0000-000000000000",
+    ],
+)
+def test_unknown_ids_are_not_found_rather_than_server_errors(client, route):
+    assert client.get(route).status_code == 404
+
+
+def test_dropping_a_session_removes_its_cache_and_can_be_repeated(client, tmp_path):
+    session_id = create_session(client, tmp_path, ["img0.jpg", "img1.jpg"])
+    cache_dir = os.path.join(alembic_app.app.config["MEDIA_FOLDER"], session_id)
+    assert os.path.isdir(cache_dir)
+
+    assert client.get(f"/drop_session/{session_id}").status_code == 200
+    assert not os.path.exists(cache_dir)
+
+    # The session is gone, so a repeat (a double click, a stale overview) is a 404, never a 500.
+    assert client.get(f"/drop_session/{session_id}").status_code == 404

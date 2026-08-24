@@ -185,18 +185,14 @@ def add_embedding(
 
 
 def remove_session_from_db(session_id: str) -> None:
-    try:
-        session = Session.query.filter_by(id=session_id).one()
-        embeddings = Embedding.query.filter_by(session_id=session.id).all()
-        for embedding in embeddings:
-            db.session.delete(embedding)
-            db.session.commit()
+    session = get_session(session_id)
+    if session is None:
+        return
 
-        db.session.delete(session)
-        db.session.commit()
-
-    except Exception as e:
-        raise e
+    for embedding in Embedding.query.filter_by(session_id=session.id).all():
+        db.session.delete(embedding)
+    db.session.delete(session)
+    db.session.commit()
 
 
 def get_images_to_keep(session_id: str) -> List[str]:
@@ -219,18 +215,12 @@ def get_random_starting_image(session_id: str) -> Optional[Embedding]:
         return None
 
 
-def get_embedding(embedding_id: str) -> Embedding:
-    try:
-        return Embedding.query.filter_by(id=embedding_id).one()
-    except Exception as e:
-        raise e
+def get_embedding(embedding_id: str) -> Optional[Embedding]:
+    return Embedding.query.filter_by(id=embedding_id).first()
 
 
-def get_session(session_id: str) -> Session:
-    try:
-        return Session.query.filter_by(id=session_id).one()
-    except Exception as e:
-        raise e
+def get_session(session_id: str) -> Optional[Session]:
+    return Session.query.filter_by(id=session_id).first()
 
 
 def get_nearest_neighbor(session_id: str, query_image_id: str, exclude_ids=None) -> Optional[Embedding]:
@@ -368,6 +358,9 @@ def serve_image():
 
     embedding = get_embedding(img_id)
 
+    if embedding is None:
+        return jsonify({"error": "image_not_found"}), 404
+
     if embedding.preview_path == ENDOFLINE:
         return jsonify({"error": "end_of_line"}), 404
 
@@ -488,7 +481,9 @@ def next_candidates():
 @app.route("/has_been_downloaded", methods=["GET"])
 def has_been_downloaded():
     session_id = request.args.get("session_id")
-    session = Session.query.filter_by(id=session_id).one()
+    session = get_session(session_id)
+    if session is None:
+        return jsonify({"error": "session_not_found"}), 404
 
     return jsonify({"has_been_downloaded": session.has_been_downloaded})
 
@@ -499,6 +494,8 @@ def open_session():
     session_id = request.args.get("session_id")
 
     session = get_session(session_id)
+    if session is None:
+        return jsonify({"error": "session_not_found"}), 404
 
     # Drop ids that cannot be displayed any more (never viewed, or a legacy endofline sentinel).
     img_id_left = resolve_visible_id(session.last_viewed_left)
@@ -619,9 +616,9 @@ def check_destination(destination: str) -> Optional[str]:
 
 
 def mark_downloaded(session_id: str) -> None:
-    if get_percentage_reviewed(session_id) != 100:
+    session = get_session(session_id)
+    if session is None or get_percentage_reviewed(session_id) != 100:
         return
-    session = Session.query.filter_by(id=session_id).one()
     session.has_been_downloaded = True
     db.session.commit()
 
@@ -667,12 +664,11 @@ def download_subset():
 @app.route("/drop_session/<string:session_id>")
 def drop_session(session_id):
     """Remove entries in 'embeddings' and 'sessions', remove related files."""
-    try:
-        remove_session_from_db(session_id)
-        logging.info(f"Session {session_id} successfully removed from database.")
-    except Exception as e:
-        logging.error(f"Something went wrong when attempting to remove session {session_id}.")
-        raise e
+    if get_session(session_id) is None:
+        return jsonify({"error": "session_not_found"}), 404
+
+    remove_session_from_db(session_id)
+    logging.info(f"Session {session_id} successfully removed from database.")
 
     client = utils.FileClient(media_folder=app.config["MEDIA_FOLDER"], session_id=session_id)
     client.remove_directory()

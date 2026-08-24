@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 from typing import List, Optional, Tuple
 from zipfile import ZipFile
 
@@ -33,65 +34,28 @@ class FileClient:
 
     def create_dir(self) -> None:
         """Create new dir in media_folder with name session_id."""
-        new_dir: str = self.upload_dir
-        assert not os.path.exists(new_dir)
-        os.mkdir(new_dir)
+        os.makedirs(self.upload_dir, exist_ok=True)
 
     def remove_directory(self) -> None:
-        dir_to_remove: str = self.upload_dir
-        zip_to_remove: str = os.path.join(self.media_folder, f"{self.session_id}.zip")
-        non_jpg_zip_to_remove: str = os.path.join(self.media_folder, f"nonjpg_{self.session_id}.zip")
+        """Delete everything cached for this session. Safe to call when there is nothing left."""
+        for zip_path in (
+            os.path.join(self.media_folder, f"{self.session_id}.zip"),
+            # Older versions staged uploads through this archive; still cleaned up for their caches.
+            os.path.join(self.media_folder, f"nonjpg_{self.session_id}.zip"),
+        ):
+            try:
+                os.remove(zip_path)
+                logging.info(f"Zipfile '{zip_path}' successfully removed.")
+            except FileNotFoundError:
+                logging.info(f"No file {zip_path} to remove.")
 
-        assert os.path.exists(dir_to_remove)
-
-        try:
-            os.remove(zip_to_remove)
-            logging.info(f"Zipfile '{zip_to_remove}' successfully removed.")
-        except FileNotFoundError as e:
-            logging.error(f"No file {zip_to_remove} found: {e.strerror}")
-
-        try:
-            os.remove(non_jpg_zip_to_remove)
-            logging.info(f"Non-jpg zipfile '{non_jpg_zip_to_remove}' successfully removed.")
-        except FileNotFoundError as e:
-            logging.info(
-                f"No file {non_jpg_zip_to_remove} found. Assuming that all uploaded images are in jpeg format."
-            )
-
-        try:
-            # Iterate over all files and subdirectories in the directory
-            for root, dirs, files in os.walk(dir_to_remove, topdown=False):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    os.remove(file_path)  # Remove each file
-
-                for dir in dirs:
-                    dir_path = os.path.join(root, dir)
-                    os.rmdir(dir_path)  # Remove each subdirectory
-
-            os.rmdir(dir_to_remove)  # After all files and subdirectories are removed, remove the empty directory itself
-            logging.info(f"Directory '{dir_to_remove}' successfully removed.")
-        except OSError as e:
-            logging.info(f"Error: {dir_to_remove} : {e.strerror}")
+        shutil.rmtree(self.upload_dir, ignore_errors=True)
+        logging.info(f"Directory '{self.upload_dir}' successfully removed.")
 
     def zip_dir(self, image_files: List[str], prefix: str = None) -> str:
         zip_filename: str = f"{prefix}_{self.session_id}.zip" if prefix else f"{self.session_id}.zip"
         write_zip(image_files, os.path.join(self.media_folder, zip_filename))
         return zip_filename
-
-    def remove_nonjpg_images(self, paths: List[str]) -> None:
-        for p in paths:
-            try:
-                logging.info(f"Deleting: {p}")
-                os.remove(p)
-            except Exception as e:
-                logging.error(f"Could not delete {p} - exception {e}")
-
-    def unzip_nonjpg_dir(self, zip_file: str) -> str:
-        logging.info("Unzipping nonjpg files!")
-        assert os.path.exists(os.path.join(self.media_folder, zip_file))
-        with ZipFile(os.path.join(self.media_folder, zip_file), "r") as zip_ref:
-            zip_ref.extractall(self.upload_dir)
 
 
 def write_zip(image_files: List[str], zip_path: str) -> None:
@@ -171,7 +135,8 @@ def load_generic_image(img_path: str) -> np.ndarray:
 
 
 def load_image(img_path: str) -> np.ndarray:
-    assert os.path.exists(img_path)
+    if not os.path.exists(img_path):
+        raise FileNotFoundError(img_path)
 
     extension = get_extension(img_path)
     if extension in RAW_EXTENSIONS:
