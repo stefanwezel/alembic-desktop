@@ -1,14 +1,26 @@
 # -*- mode: python ; coding: utf-8 -*-
+import glob
 import os
+import platform
 import sys
 
 block_cipher = None
 
-# Platform-specific TurboJPEG binary
+# Platform-specific TurboJPEG binary. utils.py instantiates TurboJPEG at import time, so a sidecar
+# built without this library does not start at all - which is why a miss below stops the build.
 if sys.platform == 'linux':
-    turbojpeg_binaries = [('/usr/lib/x86_64-linux-gnu/libturbojpeg.so.0', '.')]
+    # The multiarch directory is named after the architecture, so an aarch64 build finds nothing
+    # under the x86_64 path this used to hardcode.
+    linux_paths = [
+        f'/usr/lib/{platform.machine()}-linux-gnu/libturbojpeg.so.0',
+        '/usr/lib64/libturbojpeg.so.0',
+        '/usr/lib/libturbojpeg.so.0',
+        '/usr/local/lib/libturbojpeg.so.0',
+    ]
+    linux_paths += sorted(glob.glob('/usr/lib/*/libturbojpeg.so.0'))
+    found = next((path for path in linux_paths if os.path.exists(path)), None)
+    turbojpeg_binaries = [(found, '.')] if found else []
 elif sys.platform == 'darwin':
-    import glob
     # ARM Mac (Apple Silicon)
     arm_path = '/opt/homebrew/lib/libturbojpeg.dylib'
     # Intel Mac
@@ -24,9 +36,20 @@ elif sys.platform == 'darwin':
     else:
         turbojpeg_binaries = []
 elif sys.platform == 'win32':
-    turbojpeg_binaries = [('C:/libjpeg-turbo64/bin/turbojpeg.dll', '.')]
+    windows_paths = [
+        'C:/libjpeg-turbo64/bin/turbojpeg.dll',
+        'C:/libjpeg-turbo/bin/turbojpeg.dll',
+    ]
+    found = next((path for path in windows_paths if os.path.exists(path)), None)
+    turbojpeg_binaries = [(found, '.')] if found else []
 else:
     turbojpeg_binaries = []
+
+if not turbojpeg_binaries and sys.platform in ('linux', 'darwin', 'win32'):
+    raise SystemExit(
+        f'libturbojpeg not found on {sys.platform}. Install it (libturbojpeg0-dev, brew install '
+        'jpeg-turbo, or the libjpeg-turbo installer) before building the sidecar.'
+    )
 
 a = Analysis(
     ['app/run_server.py'],

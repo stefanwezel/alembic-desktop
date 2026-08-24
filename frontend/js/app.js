@@ -237,7 +237,10 @@ async function exportToDisk(sessionId, destination) {
 
 async function exportThroughBrowser(sessionId, sessionName) {
   const res = await fetch(`${API_BASE}/download?session_id=${sessionId}`);
-  if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.error || `HTTP error ${res.status}`);
+  }
   const url = window.URL.createObjectURL(await res.blob());
   const a = document.createElement("a");
   a.href = url;
@@ -265,7 +268,11 @@ async function downloadSession(sessionId, sessionName) {
     setTimeout(() => loadOverview(), 2000);
   } catch (e) {
     console.error("Export failed:", e);
-    alert("Could not export this session. Please try again.");
+    alert(
+      e.message === "no_images_selected"
+        ? "There is nothing to export: no image in this session was kept."
+        : "Could not export this session. Please try again."
+    );
     btn.disabled = false;
     btn.innerHTML = icon("export") + " Export";
     btn.classList.remove("loading");
