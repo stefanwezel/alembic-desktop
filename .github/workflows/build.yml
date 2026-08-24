@@ -12,7 +12,11 @@ permissions:
   contents: write
 
 jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   build:
+    needs: tests
     strategy:
       fail-fast: false
       matrix:
