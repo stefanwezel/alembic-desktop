@@ -255,3 +255,19 @@ def test_a_failed_export_leaves_no_partial_archive_behind(client, tmp_path):
     assert response.get_json()["error"] == "export_failed"
     assert not destination.exists()
     assert not (tmp_path / "selection.zip.part").exists()
+
+
+def test_same_name_different_format_get_their_own_cache_files(client, tmp_path):
+    """A camera writing IMG_1.dng next to IMG_1.jpg must not have one image overwrite the other."""
+    session_id = create_session(client, tmp_path, ["IMG_1.jpg", "IMG_1.png"])
+
+    with alembic_app.app.app_context():
+        embeddings = alembic_app.Embedding.query.filter_by(session_id=session_id).all()
+    assert len(embeddings) == 2
+    for attribute in ("display_path", "preview_path", "thumbnail_path"):
+        paths = [getattr(embedding, attribute) for embedding in embeddings]
+        assert len(set(paths)) == 2, f"{attribute} collides: {paths}"
+        assert all(os.path.exists(path) for path in paths)
+
+    previews = [open(embedding.preview_path, "rb").read() for embedding in embeddings]
+    assert previews[0] != previews[1]

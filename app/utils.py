@@ -115,13 +115,23 @@ def generate_jpg_path(dng_path: str) -> str:
 
 
 def generate_preview_path(img_path: str) -> str:
-    s = img_path.split(".")
-    return f"{s[-2]}_preview.{s[-1]}"
+    stem, extension = os.path.splitext(img_path)
+    return f"{stem}_preview{extension}"
 
 
 def generate_thumbnail_path(img_path: str) -> str:
-    s = img_path.split(".")
-    return f"{s[-2]}_thumbnail.{s[-1]}"
+    stem, extension = os.path.splitext(img_path)
+    return f"{stem}_thumbnail{extension}"
+
+
+def cache_stem(input_path: str) -> str:
+    """Filename stem for the cached versions of a source image.
+
+    The source extension is part of the stem: a camera writing IMG_1.dng next to IMG_1.jpg is the
+    normal case, and both images have to end up with previews of their own.
+    """
+    name, extension = os.path.splitext(os.path.basename(input_path))
+    return f"{name}_{extension.lstrip('.')}" if extension else name
 
 
 def get_orientation(image_path):
@@ -211,7 +221,7 @@ def prepare_image(
 ) -> tuple[str, str, str, np.ndarray]:
     """ Load image from file and create smaller version of it used for preview & thumbnail. """
     image = load_image(input_path)
-    stem = os.path.splitext(os.path.basename(input_path))[0]
+    stem = cache_stem(input_path)
 
     if get_extension(input_path) in JPEG_EXTENSIONS:  # for jpegs, we have to apply the correct transformation
         orientation = get_orientation(input_path)
