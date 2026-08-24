@@ -565,9 +565,11 @@ def completed():
 
 @app.route("/create_session_from_directory", methods=["POST"])
 def create_session_from_directory():
-    directory = request.json.get("directory")
+    directory = request.json.get("directory") or ""
+    # A typed path may be "~/photos"; the folder picker always hands over an absolute one.
+    directory = os.path.abspath(os.path.expanduser(directory.strip()))
 
-    if not directory or not os.path.isdir(directory):
+    if not os.path.isdir(directory):
         return jsonify({"error": "invalid_directory"}), 400
 
     session = add_session_for_user("desktop@localhost")
@@ -691,6 +693,32 @@ def rename_session(session_id):
         return jsonify({"success": False, "error": str(e)}), 404
 
 
+def prune_orphaned_cache() -> List[str]:
+    """Delete cached files belonging to sessions that no longer exist.
+
+    A schema bump wipes every session row but leaves ~/.alembic/cache/<session_id>/ in place, and
+    an import interrupted halfway can strand a directory too. Nothing in the UI reaches those
+    files afterwards, so they would sit there growing across upgrades.
+    """
+    media_folder = app.config["MEDIA_FOLDER"]
+    if not os.path.isdir(media_folder):
+        return []
+
+    live_ids = {str(session.id) for session in Session.query.all()}
+    cached_ids = set()
+    for entry in os.listdir(media_folder):
+        if os.path.isdir(os.path.join(media_folder, entry)):
+            cached_ids.add(entry)
+        elif entry.endswith(".zip"):
+            cached_ids.add(entry[: -len(".zip")].removeprefix("nonjpg_"))
+
+    orphans = sorted(cached_ids - live_ids)
+    for session_id in orphans:
+        logging.info(f"Removing cached files for session {session_id}, which no longer exists.")
+        utils.FileClient(media_folder=media_folder, session_id=session_id).remove_directory()
+    return orphans
+
+
 with app.app_context():
     db.create_all()
 
@@ -710,6 +738,13 @@ with app.app_context():
             logging.info(f"Database migrated to schema version {CURRENT_SCHEMA_VERSION}.")
     except Exception:
         pass  # Table might not exist yet on first run
+
+    try:
+        orphans = prune_orphaned_cache()
+        if orphans:
+            logging.warning(f"Removed cached files for {len(orphans)} session(s) that no longer exist.")
+    except Exception as e:
+        logging.error(f"Could not prune the media cache: {e}")
 
     try:
         add_user("desktop@localhost", "Desktop User")

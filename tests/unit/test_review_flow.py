@@ -33,7 +33,7 @@ def client():
 
 def make_image_folder(tmp_path, filenames):
     folder = tmp_path / "photos"
-    folder.mkdir()
+    folder.mkdir(parents=True)
     rng = np.random.default_rng(1234)
     for filename in filenames:
         pixels = rng.integers(0, 255, (120, 160, 3), dtype=np.uint8)
@@ -296,3 +296,33 @@ def test_dropping_a_session_removes_its_cache_and_can_be_repeated(client, tmp_pa
 
     # The session is gone, so a repeat (a double click, a stale overview) is a 404, never a 500.
     assert client.get(f"/drop_session/{session_id}").status_code == 404
+
+
+def test_cache_of_wiped_sessions_is_pruned_but_live_sessions_are_kept(client, tmp_path):
+    """A schema bump deletes every session row; their cache directories must go with them."""
+    doomed_id = create_session(client, tmp_path / "a", ["img0.jpg"])
+    kept_id = create_session(client, tmp_path / "b", ["img1.jpg"])
+    media_folder = alembic_app.app.config["MEDIA_FOLDER"]
+    stray_zip = os.path.join(media_folder, "11111111-1111-1111-1111-111111111111.zip")
+    open(stray_zip, "wb").close()
+
+    with alembic_app.app.app_context():
+        alembic_app.Session.query.filter_by(id=doomed_id).delete()
+        alembic_app.db.session.commit()
+        orphans = alembic_app.prune_orphaned_cache()
+
+    assert doomed_id in orphans
+    assert not os.path.exists(os.path.join(media_folder, doomed_id))
+    assert not os.path.exists(stray_zip)
+    assert os.path.isdir(os.path.join(media_folder, kept_id))
+
+
+def test_directory_path_with_a_tilde_is_expanded(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    make_image_folder(tmp_path, ["img0.jpg"])
+
+    response = client.post("/create_session_from_directory", json={"directory": " ~/photos "})
+
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["image_count"] == 1
