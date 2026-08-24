@@ -152,3 +152,39 @@ def test_prepare_image_dng(dng_dir, tmpdir):
         assert os.path.exists(thumbnail_path), f"Output image {thumbnail_path} not created."
         assert os.path.exists(preview_path), f"Output image {preview_path} not created."
         assert numpy_image.shape[-1] == 3
+
+
+class FakeOrientation:
+    """Stand-in for the exifread tag object, which carries the value in `.values`."""
+
+    def __init__(self, *values):
+        self.values = list(values)
+
+
+@pytest.mark.parametrize("value", [0, 9, 42])
+def test_transpose_image_passes_through_unknown_orientations(value):
+    """An out-of-range Orientation tag must leave the image alone, not return None."""
+    image = np.zeros((4, 6, 3), dtype=np.uint8)
+
+    assert utils.transpose_image(image, FakeOrientation(value)) is image
+
+
+def test_transpose_image_handles_an_empty_orientation_tag():
+    image = np.zeros((4, 6, 3), dtype=np.uint8)
+
+    assert utils.transpose_image(image, FakeOrientation()) is image
+
+
+def test_fit_image_dimensions_never_upscales():
+    """A source smaller than the preview size stays at its own resolution."""
+    small = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    assert utils.fit_image_dimensions(small, 1000, 1000) == (100, 100)
+
+
+def test_fit_image_dimensions_shrinks_within_bounds_and_keeps_aspect_ratio():
+    wide = np.zeros((500, 2000, 3), dtype=np.uint8)
+
+    height, width = utils.fit_image_dimensions(wide, 1000, 1000)
+
+    assert (height, width) == (250, 1000)

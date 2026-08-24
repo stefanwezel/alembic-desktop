@@ -159,12 +159,10 @@ def resize_image(image: np.ndarray, height: int = 224, width: int = 224):
 
 def transpose_image(image, orientation):
     """See Orientation in https://www.exif.org/Exif2-2.PDF for details."""
-    if orientation == None:
+    if orientation is None or not orientation.values:
         return image
     val = orientation.values[0]
-    if val == 1:
-        return image
-    elif val == 2:
+    if val == 2:
         return np.fliplr(image)
     elif val == 3:
         return np.rot90(image, 2)
@@ -178,6 +176,10 @@ def transpose_image(image, orientation):
         return np.rot90(np.flipud(image))
     elif val == 8:
         return np.rot90(image)
+    # Orientation 1 means "already upright"; anything else is a tag we do not know how to act on.
+    if val != 1:
+        logging.info(f"Unknown EXIF orientation {val}, leaving the image as it is.")
+    return image
 
 
 def prepare_image(
@@ -226,9 +228,10 @@ def fit_image_dimensions(image: np.ndarray, max_height: int = 1000, max_width: i
     """ Resize the image to a smaller resolution if max_resolution is exceeded. Maintain aspect ratio. """
     max_violating_dimension = np.argmax((image.shape[0] - max_height, image.shape[1] - max_width))
     resize_factor = (max_height, max_width)[max_violating_dimension] / image.shape[max_violating_dimension]
+    resize_factor = min(resize_factor, 1.0)  # an image smaller than the limit is left alone, not blown up
 
-    new_height = int(image.shape[0] * resize_factor)
-    new_width = int(image.shape[1] * resize_factor)
+    new_height = max(int(image.shape[0] * resize_factor), 1)
+    new_width = max(int(image.shape[1] * resize_factor), 1)
 
     return new_height, new_width
 
