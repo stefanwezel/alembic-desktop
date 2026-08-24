@@ -26,6 +26,11 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
 - **Export**: `/download` takes a `destination` (a path the user picked with the native save dialog) and writes
   the zip straight there. The GET form that streams the archive back over HTTP is only for the frontend opened
   in a plain browser - a full-resolution export does not fit in the webview's memory.
+- **Local-only API**: the sidecar listens on a fixed port, so `reject_foreign_origins` turns away any
+  request carrying an `Origin` that is not the app itself, and every destructive route is a POST (a GET
+  can be fired from a cross-site `<img>`, which sends no Origin at all).
+- **Cache pruning**: on startup, `prune_orphaned_cache()` deletes `~/.alembic/cache/<session_id>/` for
+  sessions that no longer exist - a schema bump wipes the rows but not the files.
 - **Schema versioning**: `AppMetadata` table stores `schema_version`. When `CURRENT_SCHEMA_VERSION` (in `app.py`) changes, all sessions and embeddings are wiped on startup to avoid incompatible data.
 
 ## Development Commands

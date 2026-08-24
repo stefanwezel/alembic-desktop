@@ -73,7 +73,7 @@ def test_generate_jpg_path(dng_dir):
 
 
 def test_fit_image_dimensions():
-    """Tests the `fit_image_dimensions` function with various image sizes and max dimensions while maintaining aspect ratio."""
+    """Tests `fit_image_dimensions` with various image sizes and limits, keeping the aspect ratio."""
     test_cases = [
         ((500, 250, 3), (200, 200)),
         ((250, 500, 3), (200, 200)),
