@@ -402,8 +402,14 @@ body {
   transition: background-color var(--transition-fast);
 }
 
-.upload-button:hover {
+.upload-button:hover:not(:disabled) {
   background: var(--color-accent-hover);
+}
+
+.upload-button:disabled {
+  background: var(--color-border-subtle);
+  color: var(--color-text-muted);
+  cursor: default;
 }
 
 /* ─── Upload Overlay & Spinner ───────────────────────────────────────────── */

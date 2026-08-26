@@ -165,8 +165,16 @@ async function checkDownloadStatus(sessionId, progress) {
   }
 }
 
+// The button is only meaningful once a folder is named: in Tauri that means Browse has filled the
+// field in, in a plain browser it means the user has typed a path.
+function syncLoadImagesButton() {
+  const dir = document.getElementById("directory-path").value.trim();
+  document.getElementById("load-images-button").disabled = !dir;
+}
+
 function newSession() {
   document.getElementById("directory-path").value = "";
+  syncLoadImagesButton();
   document.getElementById("upload-overlay").style.visibility = "hidden";
   document.getElementById("spinner").style.visibility = "hidden";
   showView("upload");
@@ -246,6 +254,7 @@ async function browseDirectory() {
 
   if (selected) {
     input.value = selected;
+    syncLoadImagesButton();
     storeFolder(LAST_IMPORT_FOLDER, selected);
   }
 }
@@ -799,6 +808,7 @@ function escapeHtml(str) {
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("browse-button").addEventListener("click", () => browseDirectory());
   document.getElementById("load-images-button").addEventListener("click", () => createSessionFromDirectory());
+  document.getElementById("directory-path").addEventListener("input", () => syncLoadImagesButton());
   document.getElementById("pause-session-button").addEventListener("click", () => pauseSession());
   document.getElementById("return-overview-button").addEventListener("click", () => { showView("overview"); loadOverview(); });
   loadOverview();
