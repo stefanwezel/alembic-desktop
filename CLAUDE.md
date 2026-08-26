@@ -64,7 +64,7 @@ pytest tests/unit/test_utils.py::test_load_jpg
 black --line-length 120 app/
 
 # Format Rust code
-cargo fmt -p alembic-desktop-lib
+cargo fmt --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Key Configuration
