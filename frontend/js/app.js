@@ -183,12 +183,70 @@ function newSession() {
   }
 }
 
+// Where the pickers should open. Without this they start in the app's working directory, which is
+// wherever the app happened to be launched from. Remembering is a convenience: losing it (private
+// window, cleared storage) just means starting at home again.
+const LAST_IMPORT_FOLDER = "alembic.lastImportFolder";
+const LAST_EXPORT_FOLDER = "alembic.lastExportFolder";
+
+function readStored(key) {
+  try {
+    return localStorage.getItem(key) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function storeFolder(key, path) {
+  try {
+    localStorage.setItem(key, path);
+  } catch (e) {
+    // Storage can be unavailable; a forgotten folder is not worth failing an import over.
+  }
+}
+
+function parentFolder(filePath) {
+  const cut = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+  return cut > 0 ? filePath.slice(0, cut) : null;
+}
+
+async function startingFolder(key) {
+  const remembered = readStored(key);
+  if (remembered) return remembered;
+  try {
+    return await window.__TAURI__.path.homeDir();
+  } catch (e) {
+    console.error("Could not resolve the home directory:", e);
+    return undefined;
+  }
+}
+
 async function browseDirectory() {
   if (!window.__TAURI__) return;
   const { open } = window.__TAURI__.dialog;
-  const selected = await open({ directory: true, multiple: false, title: "Select image folder" });
+  const input = document.getElementById("directory-path");
+
+  let selected;
+  try {
+    selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Select image folder",
+      defaultPath: await startingFolder(LAST_IMPORT_FOLDER),
+    });
+  } catch (e) {
+    // No desktop portal on this system. Let the user type a path rather than dead-ending them.
+    console.error("Could not open the folder picker:", e);
+    input.readOnly = false;
+    input.placeholder = "/path/to/photos";
+    input.focus();
+    alert("Could not open the folder picker. Type the folder path instead.");
+    return;
+  }
+
   if (selected) {
-    document.getElementById("directory-path").value = selected;
+    input.value = selected;
+    storeFolder(LAST_IMPORT_FOLDER, selected);
   }
 }
 
@@ -214,9 +272,11 @@ async function openSession(sessionId, progress) {
 
 async function askWhereToSave(sessionName) {
   const { save } = window.__TAURI__.dialog;
+  const fileName = `${sessionName.replace(/[\\/:*?"<>|]/g, "_")}.zip`;
+  const folder = await startingFolder(LAST_EXPORT_FOLDER);
   return save({
     title: "Export selection",
-    defaultPath: `${sessionName.replace(/[\\/:*?"<>|]/g, "_")}.zip`,
+    defaultPath: folder ? `${folder}/${fileName}` : fileName,
     filters: [{ name: "Zip archive", extensions: ["zip"] }],
   });
 }
@@ -253,8 +313,18 @@ async function exportThroughBrowser(sessionId, sessionName) {
 
 async function downloadSession(sessionId, sessionName) {
   const btn = document.getElementById(`downloadButton${sessionId}`);
-  const destination = window.__TAURI__ ? await askWhereToSave(sessionName) : null;
-  if (window.__TAURI__ && !destination) return; // the user cancelled the save dialog
+  let destination = null;
+  if (window.__TAURI__) {
+    try {
+      destination = await askWhereToSave(sessionName);
+    } catch (e) {
+      console.error("Could not open the save dialog:", e);
+      alert("Could not open the save dialog. Please try again.");
+      return;
+    }
+    if (!destination) return; // the user cancelled the save dialog
+    storeFolder(LAST_EXPORT_FOLDER, parentFolder(destination) || destination);
+  }
 
   btn.disabled = true;
   btn.innerHTML = "Exporting...";

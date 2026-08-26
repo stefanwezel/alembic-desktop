@@ -71,6 +71,9 @@ cargo fmt -p alembic-desktop-lib
 
 - `pyproject.toml`: Black formatter, 120-char line length
 - `tauri.conf.json`: Window config (1400x900), CSP allowing localhost:3001, frontend served from `../frontend`
+- `src-tauri/Cargo.toml`: `tauri-plugin-dialog` is built with `default-features = false, features = ["xdg-portal"]`,
+  so Linux file dialogs come from the desktop portal - the file manager's own chooser, with its sidebar - rather
+  than rfd's bare GTK3 one. Windows and macOS are unaffected; `ashpd` only builds on Linux/BSD.
 - `alembic-api.spec`: PyInstaller spec with platform-specific TurboJPEG bundling and hidden imports
 - `LOG_LEVEL` env var controls Python logging level (default: ERROR)
 
