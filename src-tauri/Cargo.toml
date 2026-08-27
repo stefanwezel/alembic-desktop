@@ -1,6 +1,6 @@
 [package]
 name = "alembic-desktop"
-version = "0.3.0"
+version = "0.3.1"
 description = "Alembic Desktop"
 edition = "2021"
 
