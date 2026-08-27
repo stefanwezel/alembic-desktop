@@ -533,6 +533,18 @@ body {
   opacity: 1;
 }
 
+/* A finger cannot hover, so on a touch screen the first tap is spent bringing the controls out
+   instead of deciding on the image. Keep them visible whenever the machine has a touch screen at
+   all: `any-pointer` rather than `hover`, because a Surface with its keyboard attached has a mouse
+   as well and would otherwise still hide them. */
+@media (any-pointer: coarse) {
+  .select-button-bottom,
+  .select-button-top,
+  .select-button-side {
+    opacity: 1;
+  }
+}
+
 .select-button-bottom {
   bottom: 15%;
   left: 50%;
@@ -601,6 +613,12 @@ body {
 
 .img-wrapper:hover .reset-button {
   opacity: 1;
+}
+
+@media (any-pointer: coarse) {
+  .reset-button {
+    opacity: 1;
+  }
 }
 
 .reset-button:hover {

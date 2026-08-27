@@ -68,6 +68,7 @@ a = Analysis(
         'PIL.PngImagePlugin',
         'PIL.TiffImagePlugin',
         'flask_cors',
+        'waitress',
         'flask_sqlalchemy',
         'onnxruntime',
         'exifread',

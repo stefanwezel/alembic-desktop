@@ -29,6 +29,13 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
 - **Local-only API**: the sidecar listens on a fixed port, so `reject_foreign_origins` turns away any
   request carrying an `Origin` that is not the app itself, and every destructive route is a POST (a GET
   can be fired from a cross-site `<img>`, which sends no Origin at all).
+- **WSGI server**: `run_server.py` serves the app with waitress, on both loopback families
+  (`127.0.0.1` and `[::1]` - Windows resolves `localhost` to the v6 address first). Not the Werkzeug
+  development server: it speaks HTTP/1.0 and hangs up after every response, and Chromium (the Windows
+  webview) silently retries a GET when a connection dies under it but never a POST. That showed up on
+  Windows as every read working while every write appeared to fail, even though the server had already
+  applied it. `postJson` in the frontend retries a lost POST once for the same reason; the folder
+  import is deliberately left out of it, since repeating that one would duplicate the session.
 - **Cache pruning**: on startup, `prune_orphaned_cache()` deletes `~/.alembic/cache/<session_id>/` for
   sessions that no longer exist - a schema bump wipes the rows but not the files.
 - **Schema versioning**: `AppMetadata` table stores `schema_version`. When `CURRENT_SCHEMA_VERSION` (in `app.py`) changes, all sessions and embeddings are wiped on startup to avoid incompatible data.

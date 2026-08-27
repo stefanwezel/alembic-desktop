@@ -16,6 +16,28 @@ function icon(name, size = 16) {
   return icons[name] || "";
 }
 
+// ─── API ───────────────────────────────────────────────────────────────────────
+
+// Every write goes through here. A local connection can still die before the response comes back,
+// and Chromium - the engine behind the Windows webview - retries a GET on its own but never a
+// POST: the server applies the change and the page is told the request failed. Each write below
+// sets a fixed outcome for a known id, so repeating one is harmless and turns a lost response into
+// a working click. Callers that would duplicate work on a repeat (importing a folder) use fetch
+// directly instead.
+async function postJson(url, body) {
+  const options = { method: "POST" };
+  if (body !== undefined) {
+    options.headers = { "Content-Type": "application/json" };
+    options.body = JSON.stringify(body);
+  }
+  try {
+    return await fetch(url, options);
+  } catch (e) {
+    console.warn(`POST ${url} did not come back, retrying once:`, e);
+    return fetch(url, options);
+  }
+}
+
 // ─── View Management ───────────────────────────────────────────────────────────
 
 function showView(name) {
@@ -293,11 +315,7 @@ async function askWhereToSave(sessionName) {
 async function exportToDisk(sessionId, destination) {
   // The sidecar writes the archive itself: a full-resolution export runs to gigabytes, which does
   // not survive being pulled through the webview as a blob.
-  const res = await fetch(`${API_BASE}/download`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, destination }),
-  });
+  const res = await postJson(`${API_BASE}/download`, { session_id: sessionId, destination });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({}));
     throw new Error(detail.error || `HTTP error ${res.status}`);
@@ -360,10 +378,13 @@ async function downloadSession(sessionId, sessionName) {
 
 async function dropSession(sessionId) {
   try {
-    await fetch(`${API_BASE}/drop_session/${sessionId}`, { method: "POST" });
+    const res = await postJson(`${API_BASE}/drop_session/${sessionId}`);
+    // 404 means it is already gone - a retried delete, or a second click. Nothing left to report.
+    if (!res.ok && res.status !== 404) throw new Error(`HTTP error ${res.status}`);
     loadOverview();
   } catch (e) {
     console.error("Error dropping session:", e);
+    alert("Could not drop this session. Please try again.");
   }
 }
 
@@ -407,11 +428,7 @@ async function submitNewSessionName(sessionId) {
   const newName = nameInput ? nameInput.value.trim() : "";
   if (!newName) return;
   try {
-    const res = await fetch(`${API_BASE}/rename_session/${sessionId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ new_name: newName }),
-    });
+    const res = await postJson(`${API_BASE}/rename_session/${sessionId}`, { new_name: newName });
     if (res.ok) {
       closePopup();
       loadOverview();
@@ -445,6 +462,8 @@ async function createSessionFromDirectory() {
   progressText.textContent = "Processing images...";
 
   try {
+    // Deliberately not postJson: repeating this import would leave a second copy of the folder
+    // behind, so a lost response has to surface as an error rather than be retried.
     const res = await fetch(`${API_BASE}/create_session_from_directory`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -755,30 +774,25 @@ function upgradeToDisplay(img, side, imgId) {
 
 async function updateImages(route, sessionId, position, clickedImageId, otherImageId) {
   try {
-    const res = await fetch(route, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: sessionId,
-        position: position,
-        clickedImageId: clickedImageId,
-        otherImageId: otherImageId,
-      }),
+    const res = await postJson(route, {
+      session_id: sessionId,
+      position: position,
+      clickedImageId: clickedImageId,
+      otherImageId: otherImageId,
     });
-    if (!res.ok) {
-      console.error(`API error: ${res.status}`);
-      return;
-    }
+    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
     if (data.status === "completed") {
       showView("completed");
     } else if (data.status === "next") {
       loadDecision(sessionId, data.img_id_left, data.img_id_right);
     } else {
-      console.error("Unexpected action response:", data);
+      throw new Error(`Unexpected action response: ${JSON.stringify(data)}`);
     }
   } catch (e) {
-    console.error("Error:", e);
+    // Saying nothing here leaves the same pair on screen and the buttons looking broken.
+    console.error("Error reviewing image:", e);
+    alert("Could not move on to the next pair. Please try again.");
   }
 }
 
