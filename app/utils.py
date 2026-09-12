@@ -147,19 +147,21 @@ def load_image(img_path: str) -> np.ndarray:
 
 
 def save_image(img: np.ndarray, save_path: str) -> None:
-    """Write a BGR array to save_path.
+    """Write a BGR array to save_path, encoded in memory and written out from Python.
 
-    cv2.imwrite opens the path through the process code page, so on Windows a name holding anything
-    outside it - Greek, Cyrillic, CJK - cannot be written, and it reports that by returning False
-    rather than raising. Pillow goes through the wide API and has no such limit, so it takes over
-    when that happens; it stays the fallback rather than the default because cv2 writes JPEGs at
-    quality 95, which is what every cached display copy so far was written at.
+    Not cv2.imwrite: that hands the path to the C runtime as bytes, which Windows reads back in the
+    process code page. A name holding anything outside that page - Greek, Cyrillic, CJK - then either
+    fails, or worse lands in a file named after the mis-read bytes while imwrite still reports
+    success, leaving an import that looks like it worked with no display copy where one is expected.
+    Python's open() goes through the wide API, and encoding in memory keeps cv2's own JPEG settings,
+    so the bytes written are the same ones as before.
     """
-    if cv2.imwrite(save_path, img):
-        return
-
-    logging.info(f"cv2 could not write {save_path}, falling back to Pillow.")
-    Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).save(save_path, quality=95)
+    extension = os.path.splitext(save_path)[1] or ".jpg"
+    encoded, buffer = cv2.imencode(extension, img)
+    if not encoded:
+        raise OSError(f"Could not encode an image for {save_path}.")
+    with open(save_path, "wb") as out_file:
+        out_file.write(buffer)
 
 
 def resize_image(image: np.ndarray, height: int = 224, width: int = 224):
