@@ -3,6 +3,9 @@ import logging
 import os
 import random
 import sys
+import tempfile
+import threading
+import time
 import uuid
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
@@ -409,6 +412,28 @@ def home():
     return jsonify({"status": "ok", "message": "Alembic API"})
 
 
+@app.route("/shutdown", methods=["POST"])
+def shutdown():
+    """Exit, so that the desktop shell does not have to kill us.
+
+    This is a PyInstaller onefile bundle: the bootloader that started this process unpacks ~280 MB
+    into a temp directory and deletes it again only once this process has exited on its own. Killed
+    instead, it leaves that directory behind - once per launch, for good.
+
+    waitress has no in-process stop, so the exit happens from a thread just after this response has
+    gone out. Only the shell reaches this route: it is a POST, which a cross-site <img> cannot fire,
+    and `reject_foreign_origins` has already turned away anything that came from a website.
+    """
+
+    def exit_once_response_is_out():
+        time.sleep(0.25)
+        os._exit(0)
+
+    threading.Thread(target=exit_once_response_is_out, daemon=True).start()
+    logging.info("Shutdown requested, exiting.")
+    return jsonify({"status": "stopping"})
+
+
 @app.route("/serve_image")
 def serve_image():
     img_id = request.args.get("img_id")
@@ -422,15 +447,24 @@ def serve_image():
     if embedding.preview_path == ENDOFLINE:
         return jsonify({"error": "end_of_line"}), 404
 
-    if version == "thumbnail":
-        return send_file(embedding.thumbnail_path)
-    if version == "preview":
-        return send_file(embedding.preview_path)
-    elif version == "display":
-        return send_file(embedding.display_path)
-    else:
+    paths = {
+        "thumbnail": embedding.thumbnail_path,
+        "preview": embedding.preview_path,
+        "display": embedding.display_path,
+    }
+    path = paths.get(version)
+    if path is None:
         logging.error(f"Invalid image version {version} requested.")
         return jsonify({"error": "invalid_version"}), 400
+
+    if not os.path.isfile(path):
+        # send_file would raise FileNotFoundError here, and a 500 tells the frontend nothing it can
+        # act on. A cached file can be missing for real: a write that failed during the import, or
+        # a cache directory the user cleared out from under a live session.
+        logging.error(f"Cached {version} for {img_id} is missing from {path}.")
+        return jsonify({"error": "image_file_missing"}), 404
+
+    return send_file(path)
 
 
 def _next_pair_response(session_id: str, id_left: str, id_right: str):
@@ -672,7 +706,13 @@ def check_destination(destination: str) -> Optional[str]:
     parent = os.path.dirname(destination)
     if not os.path.isdir(parent):
         return "destination_directory_missing"
-    if not os.access(parent, os.W_OK):
+    try:
+        # Not os.access: on Windows that only reports the read-only attribute, so a directory the
+        # user cannot write to passes it and the export fails later as a generic write error.
+        # Actually opening a file is the only portable answer.
+        with tempfile.TemporaryFile(dir=parent):
+            pass
+    except OSError:
         return "destination_not_writable"
     return None
 

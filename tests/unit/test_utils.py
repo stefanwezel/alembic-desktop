@@ -55,6 +55,26 @@ def test_load_image_non_jpeg_formats(tmpdir, filename):
     assert tuple(image[0, 0]) == (30, 20, 10)  # RGB source arrives as BGR
 
 
+@pytest.mark.parametrize("filename", ["Ωμέγα.png", "日本.tif"])
+def test_prepare_image_handles_names_outside_the_windows_code_page(tmpdir, filename):
+    """Every cached copy must be written even for a name Windows cannot spell in its code page.
+
+    cv2 opens paths through that code page and reports a name it cannot handle by returning False
+    from imwrite rather than raising, which left the import reporting success with no display file
+    on disk and the sweep stuck on the preview (regression).
+    """
+    from PIL import Image
+
+    input_path = os.path.join(tmpdir, filename)
+    Image.new("RGB", (640, 480), (10, 20, 30)).save(input_path)
+
+    display_path, thumbnail_path, preview_path, _ = utils.prepare_image(input_path, output_dir=str(tmpdir))
+
+    assert os.path.exists(display_path), f"Output image {display_path} not created."
+    assert os.path.exists(thumbnail_path), f"Output image {thumbnail_path} not created."
+    assert os.path.exists(preview_path), f"Output image {preview_path} not created."
+
+
 def test_raw_extensions_route_to_rawpy():
     """Every advertised RAW format must be decoded by rawpy, not by the JPEG fast path."""
     assert utils.RAW_EXTENSIONS == {".dng", ".cr2", ".nef", ".arw"}

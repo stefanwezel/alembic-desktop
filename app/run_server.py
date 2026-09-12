@@ -14,8 +14,6 @@ if getattr(sys, 'frozen', False):
     os.environ.setdefault('MEDIA_FOLDER', os.path.join(os.path.expanduser('~'), '.alembic', 'cache'))
     os.environ.setdefault('APP_SECRET_KEY', 'desktop-app-secret-key')
 
-from app import app
-
 PORT = 3001
 
 
@@ -23,6 +21,9 @@ def bind_loopback(family, host):
     """A socket bound to one loopback address, closed again if the bind fails."""
     sock = socket.socket(family, socket.SOCK_STREAM)
     try:
+        # Keeps a restart from tripping over the connections the last run left in TIME_WAIT. It does
+        # not keep a second server out: on Windows this option means "bind a port another socket is
+        # already listening on", which is what already_serving() below is there to catch.
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         if family == socket.AF_INET6:
             # Keep this one off the v4 address, which is already spoken for below.
@@ -51,9 +52,34 @@ def listening_sockets():
     return sockets
 
 
+def already_serving():
+    """Whether something is listening on the API port already.
+
+    A bind alone is no answer on Windows: SO_REUSEADDR there lets a second socket take a port that
+    is already being listened on, so a sidecar left over from a crashed app would be joined by this
+    one rather than keeping it out - two servers on one port, with undefined delivery between them
+    and both writing to the same SQLite file. Connecting is the unambiguous test, and unlike the
+    bind it ignores the TIME_WAIT connections a previous run leaves behind.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.25)
+        return probe.connect_ex(('127.0.0.1', PORT)) == 0
+
+
 def main():
+    if already_serving():
+        # The window that started us reaches that server and works off the same database, so this is
+        # a clean no-op rather than an error to report.
+        logging.warning(f"Something is already serving on port {PORT}; not starting a second server.")
+        return
+
     cache_dir = os.environ.get('MEDIA_FOLDER', os.path.join(os.path.expanduser('~'), '.alembic', 'cache'))
     os.makedirs(cache_dir, exist_ok=True)
+
+    # Imported here rather than at the top of the module so that the check above is the cheap thing
+    # it looks like: importing the app loads the ONNX model and opens the database, neither of which
+    # a sidecar that is about to step aside has any business doing.
+    from app import app
 
     # waitress, not the Werkzeug development server: that one speaks HTTP/1.0 and hangs up after
     # every response, so each request needs a fresh connection that is torn down underneath the

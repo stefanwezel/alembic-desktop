@@ -147,8 +147,19 @@ def load_image(img_path: str) -> np.ndarray:
 
 
 def save_image(img: np.ndarray, save_path: str) -> None:
-    """ Wrapper for cv2 imwrite to avoid imports in app. """
-    cv2.imwrite(save_path, img)
+    """Write a BGR array to save_path.
+
+    cv2.imwrite opens the path through the process code page, so on Windows a name holding anything
+    outside it - Greek, Cyrillic, CJK - cannot be written, and it reports that by returning False
+    rather than raising. Pillow goes through the wide API and has no such limit, so it takes over
+    when that happens; it stays the fallback rather than the default because cv2 writes JPEGs at
+    quality 95, which is what every cached display copy so far was written at.
+    """
+    if cv2.imwrite(save_path, img):
+        return
+
+    logging.info(f"cv2 could not write {save_path}, falling back to Pillow.")
+    Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).save(save_path, quality=95)
 
 
 def resize_image(image: np.ndarray, height: int = 224, width: int = 224):

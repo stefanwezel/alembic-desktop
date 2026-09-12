@@ -36,6 +36,22 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
   Windows as every read working while every write appeared to fail, even though the server had already
   applied it. `postJson` in the frontend retries a lost POST once for the same reason; the folder
   import is deliberately left out of it, since repeating that one would duplicate the session.
+- **Sidecar lifecycle**: the shell asks the API to quit with `POST /shutdown`, which exits the process
+  from a thread once the response is out. That route exists because this is a PyInstaller onefile
+  bundle: the bootloader that starts the server unpacks ~280 MB into a temp directory and deletes it
+  again only when the server exits by itself, so killing it leaks that directory once per launch.
+  SIGTERM (Unix) and `taskkill /T /F` (Windows, which has no signal to send) are the fallback for a
+  sidecar that never got as far as opening its port, and `child.kill()` the last resort. Liveness
+  comes from the shell plugin's `Terminated` event - Windows offers nothing cheap to ask.
+- **One instance at a time**: `tauri-plugin-single-instance` is registered before every other plugin,
+  so a second launch hands over to the running window before it can spawn a sidecar of its own. The
+  sidecar also refuses to start when something already answers on port 3001 (`already_serving()`).
+  A failed bind is no guard there: on Windows `SO_REUSEADDR` means "bind a port another socket is
+  already listening on", so two sidecars would share the port and the database between them.
+- **Windows code pages**: cv2 opens paths through the process code page, so a file named outside it
+  (Greek, Cyrillic, CJK) cannot be read or written - and `imwrite` reports that by returning `False`
+  rather than raising. `utils.load_generic_image` and `utils.save_image` both fall back to Pillow,
+  which goes through the wide API.
 - **Cache pruning**: on startup, `prune_orphaned_cache()` deletes `~/.alembic/cache/<session_id>/` for
   sessions that no longer exist - a schema bump wipes the rows but not the files.
 - **Schema versioning**: `AppMetadata` table stores `schema_version`. When `CURRENT_SCHEMA_VERSION` (in `app.py`) changes, all sessions and embeddings are wiped on startup to avoid incompatible data.
@@ -50,7 +66,7 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
 sudo apt-get install -y pkg-config libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf libturbojpeg0-dev
 
 # Setup Python environment
-python3 -m venv .venv && source .venv/bin/activate && pip install -r app/requirements-dev.txt pyinstaller
+python3 -m venv .venv && source .venv/bin/activate && pip install -r app/requirements-dev.txt pyinstaller==6.19.0
 
 # Build/rebuild the Python sidecar (required before first run and after any Python changes)
 ./scripts/rebuild-sidecar.sh
@@ -77,7 +93,12 @@ cargo fmt --manifest-path src-tauri/Cargo.toml
 ## Key Configuration
 
 - `pyproject.toml`: Black formatter, 120-char line length
-- `tauri.conf.json`: Window config (1400x900), CSP allowing localhost:3001, frontend served from `../frontend`
+- `tauri.conf.json`: Window config (1400x900), CSP allowing localhost:3001, frontend served from `../frontend`.
+  `bundle.windows.webviewInstallMode` embeds the WebView2 bootstrapper instead of fetching it from
+  Microsoft during the install; `offlineInstaller` would drop the network requirement entirely at the
+  cost of ~127 MB. Nothing is code signed, so Windows shows a SmartScreen warning on first run.
+  `beforeDevCommand` tries `py -3` before `python3` so that it also works on Windows, where `python3`
+  is usually the Microsoft Store stub - the price is one "py: not found" line per `cargo tauri dev` on Linux
 - `src-tauri/Cargo.toml`: `tauri-plugin-dialog` is built with `default-features = false, features = ["xdg-portal"]`,
   so Linux file dialogs come from the desktop portal - the file manager's own chooser, with its sidebar - rather
   than rfd's bare GTK3 one. Windows and macOS are unaffected; `ashpd` only builds on Linux/BSD.

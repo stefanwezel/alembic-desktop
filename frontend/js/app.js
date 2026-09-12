@@ -56,12 +56,22 @@ let currentIdRight = null;
 
 // ─── Overview ──────────────────────────────────────────────────────────────────
 
-// The sidecar unpacks ~100 MB before it starts listening, so on a cold start the first overview
+// The sidecar unpacks ~280 MB before it starts listening, so on a cold start the first overview
 // requests fail. Keep asking rather than leaving the user with an empty window.
-const STARTUP_RETRY_INTERVAL_MS = 1000;
-const STARTUP_RETRY_LIMIT = 60;
-let startupRetries = 0;
+//
+// Five minutes, not the one it used to be: a first launch on a slow disk, or with a virus scanner
+// reading every file as it is extracted, takes longer than a minute often enough, and giving up
+// lands the user on a failure message for an app that is about to come up seconds later. The gap
+// between attempts grows so that a genuinely dead service is not hammered for all five minutes.
+const STARTUP_RETRY_DEADLINE_MS = 5 * 60 * 1000;
+let startupWaitingSince = null;
 let startupRetryTimer = null;
+
+function startupRetryDelay(waitedMs) {
+  if (waitedMs < 15000) return 1000;
+  if (waitedMs < 60000) return 2000;
+  return 5000;
+}
 
 async function loadOverview() {
   showView("overview");
@@ -70,14 +80,15 @@ async function loadOverview() {
     const res = await fetch(`${API_BASE}/overview`);
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const data = await res.json();
-    startupRetries = 0;
+    startupWaitingSince = null;
     renderOverview(data);
   } catch (e) {
     console.error("Error loading overview:", e);
-    if (startupRetries < STARTUP_RETRY_LIMIT) {
-      startupRetries += 1;
+    if (startupWaitingSince === null) startupWaitingSince = Date.now();
+    const waited = Date.now() - startupWaitingSince;
+    if (waited < STARTUP_RETRY_DEADLINE_MS) {
       renderStartupMessage("Starting Alembic...", false);
-      startupRetryTimer = setTimeout(loadOverview, STARTUP_RETRY_INTERVAL_MS);
+      startupRetryTimer = setTimeout(loadOverview, startupRetryDelay(waited));
     } else {
       renderStartupMessage("Could not reach the Alembic service.", true);
     }
@@ -97,7 +108,7 @@ function renderStartupMessage(message, offerRetry) {
   retry.className = "new-session-button";
   retry.textContent = "Try again";
   retry.addEventListener("click", () => {
-    startupRetries = 0;
+    startupWaitingSince = null;
     loadOverview();
   });
   notice.appendChild(retry);
@@ -305,9 +316,11 @@ async function askWhereToSave(sessionName) {
   const { save } = window.__TAURI__.dialog;
   const fileName = `${sessionName.replace(/[\\/:*?"<>|]/g, "_")}.zip`;
   const folder = await startingFolder(LAST_EXPORT_FOLDER);
+  // Joined with the separator the folder itself uses, so a Windows path stays a Windows path.
+  const separator = folder && folder.includes("\\") ? "\\" : "/";
   return save({
     title: "Export selection",
-    defaultPath: folder ? `${folder}/${fileName}` : fileName,
+    defaultPath: folder ? `${folder}${separator}${fileName}` : fileName,
     filters: [{ name: "Zip archive", extensions: ["zip"] }],
   });
 }

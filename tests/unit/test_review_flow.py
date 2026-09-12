@@ -388,3 +388,40 @@ def test_session_deletion_is_not_reachable_by_a_plain_get(client, tmp_path):
 
     assert client.get(f"/drop_session/{session_id}").status_code == 405
     assert client.get("/overview").get_json()["sessions"]
+
+
+def test_shutdown_answers_before_it_exits(client, monkeypatch):
+    """The shell waits for this response, so the exit has to happen behind it, on a thread.
+
+    Exiting inline would close the connection before the response went out, and the shell would fall
+    back to killing the process - which is the whole thing this route exists to avoid.
+    """
+    scheduled = []
+
+    class FakeThread:
+        def __init__(self, target, daemon=None):
+            scheduled.append(target)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(alembic_app.threading, "Thread", FakeThread)
+
+    response = client.post("/shutdown")
+
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "stopping"
+    assert scheduled, "the exit must be scheduled on a thread, never run inline"
+
+
+def test_a_missing_cached_file_is_reported_as_not_found(client, tmp_path):
+    """A cached copy can go missing; the frontend needs a 404 it can act on, not a 500."""
+    session_id = create_session(client, tmp_path, ["img0.jpg"])
+    image_id = client.get(f"/open_session?session_id={session_id}").get_json()["img_id_left"]
+    with alembic_app.app.app_context():
+        os.remove(alembic_app.get_embedding(image_id).preview_path)
+
+    response = client.get(f"/serve_image?img_id={image_id}&version=preview")
+
+    assert response.status_code == 404
+    assert response.get_json()["error"] == "image_file_missing"

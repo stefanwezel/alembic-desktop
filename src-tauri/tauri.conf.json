@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../frontend",
     "devUrl": "http://localhost:8080",
-    "beforeDevCommand": "fuser -k 8080/tcp 2>/dev/null; fuser -k 3001/tcp 2>/dev/null; python3 scripts/dev-server.py 8080 frontend",
+    "beforeDevCommand": "py -3 scripts/dev-server.py 8080 frontend || python3 scripts/dev-server.py 8080 frontend",
     "beforeBuildCommand": ""
   },
   "app": {
@@ -37,6 +37,11 @@
     ],
     "externalBin": [
       "binaries/alembic-api"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    }
   }
 }

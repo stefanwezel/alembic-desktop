@@ -12,6 +12,12 @@ chmod +x Alembic_*.AppImage
 ./Alembic_*.AppImage
 ```
 
+**Windows:** run `Alembic_*_x64-setup.exe` to install for yourself, or `Alembic_*_x64_en-US.msi` to
+install for everyone on the machine (that one asks for administrator rights). The installers are not
+code signed, so SmartScreen greets the download with "Windows protected your PC" — open **More info**
+and choose **Run anyway**. Installing needs an internet connection the first time on a machine
+without WebView2 (Windows 11 and up-to-date Windows 10 already have it).
+
 ## Prerequisites
 
 - **Rust** (stable toolchain) — [rustup.rs](https://rustup.rs)
@@ -20,6 +26,11 @@ chmod +x Alembic_*.AppImage
   ```bash
   sudo apt-get install -y pkg-config libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf libturbojpeg0-dev
   ```
+- **On Windows**, instead of those libraries:
+  - Visual Studio Build Tools with the "Desktop development with C++" workload, for the linker Rust uses
+  - [libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo/releases) — the `vc64` installer,
+    installed into `C:\libjpeg-turbo64`, which is where `alembic-api.spec` and `app/turbojpeg.py` look
+  - Git Bash, to run the `scripts/*.sh` below
 
 ## Build from source
 
@@ -37,7 +48,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install Python dependencies
-pip install -r app/requirements.txt pyinstaller
+pip install -r app/requirements.txt pyinstaller==6.19.0
 
 # Build the Python sidecar (required before first run and after any Python changes)
 ./scripts/rebuild-sidecar.sh
@@ -75,4 +86,5 @@ When you load a folder, each image is processed into three cached sizes (thumbna
 
 ## Data storage
 
-All application data lives in `~/.alembic/` — this includes the SQLite database (`alembic.db`) and the image cache.
+All application data lives in `~/.alembic/` (`C:\Users\<you>\.alembic` on Windows) — this includes the
+SQLite database (`alembic.db`) and the image cache.

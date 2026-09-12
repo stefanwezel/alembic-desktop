@@ -8,14 +8,29 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
     steps:
 
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libturbojpeg0-dev
+
+      # Into the path turbojpeg.py falls back to, since nothing is frozen here and there is no
+      # bundle directory to find the library in.
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -L -o libjpeg-turbo.exe https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.0/libjpeg-turbo-3.1.0-vc64.exe
+          Start-Process -FilePath .\libjpeg-turbo.exe -ArgumentList '/S','/D=C:\libjpeg-turbo64' -Wait
+        shell: pwsh
 
       - name: Set up Python environment
         uses: actions/setup-python@v5

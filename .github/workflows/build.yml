@@ -73,7 +73,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python dependencies
-        run: pip install -r app/requirements.txt pyinstaller
+        # PyInstaller pinned: its loader is what makes the bundled libraries resolvable at all
+        # (on Windows, through the find_library it patches), so it is not a moving part to leave loose.
+        run: pip install -r app/requirements.txt pyinstaller==6.19.0
 
       # --- Rust ---
       - name: Setup Rust

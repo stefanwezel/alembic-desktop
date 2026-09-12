@@ -97,7 +97,10 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # No UPX: it mangles some of the DLLs this bundle carries (onnxruntime and cv2 are the usual
+    # casualties) and earns an antivirus flag for the trouble. It is absent on the build runners
+    # anyway, so leaving this on only changed what a developer's own machine produced.
+    upx=False,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
