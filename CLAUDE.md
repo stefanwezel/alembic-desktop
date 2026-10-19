@@ -28,7 +28,10 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
   in a plain browser - a full-resolution export does not fit in the webview's memory.
 - **Local-only API**: the sidecar listens on a fixed port, so `reject_foreign_origins` turns away any
   request carrying an `Origin` that is not the app itself, and every destructive route is a POST (a GET
-  can be fired from a cross-site `<img>`, which sends no Origin at all).
+  can be fired from a cross-site `<img>`, which sends no Origin at all). `Origin: null` counts as foreign:
+  no webview of the app's sends it (WebKitGTK sends `tauri://localhost`, WebView2 `http://tauri.localhost`),
+  but a website's sandboxed iframe does. A `Host` other than a loopback name is refused too - that is
+  what a DNS-rebinding page sends, and its same-origin GETs carry no Origin.
 - **WSGI server**: `run_server.py` serves the app with waitress, on both loopback families
   (`127.0.0.1` and `[::1]` - Windows resolves `localhost` to the v6 address first). Not the Werkzeug
   development server: it speaks HTTP/1.0 and hangs up after every response, and Chromium (the Windows
@@ -45,14 +48,17 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
   comes from the shell plugin's `Terminated` event - Windows offers nothing cheap to ask.
 - **One instance at a time**: `tauri-plugin-single-instance` is registered before every other plugin,
   so a second launch hands over to the running window before it can spawn a sidecar of its own. The
-  sidecar also refuses to start when something already answers on port 3001 (`already_serving()`).
+  sidecar also steps aside when an Alembic sidecar already answers on port 3001 (`already_serving()`,
+  `is_alembic()`), and exits with an error when some other program holds the port.
   A failed bind is no guard there: on Windows `SO_REUSEADDR` means "bind a port another socket is
   already listening on", so two sidecars would share the port and the database between them.
 - **Windows code pages**: cv2 hands paths to the C runtime as bytes, which Windows reads back in the
   process code page, so a file named outside it (Greek, Cyrillic, CJK) cannot be opened - and a write
   can even appear to succeed into a file named after the mis-read bytes. Neither side of the cache
   goes through a cv2 path any more: `utils.save_image` encodes in memory and writes with `open()`,
-  and `utils.load_generic_image` falls back to Pillow when `imread` comes back empty.
+  and `utils.load_generic_image` reads the bytes from Python and decodes them with `cv2.imdecode`.
+- **Windows MIME types**: `mimetypes` takes the type of an extension from the Windows registry, which
+  other software can change, so `/serve_image` states `image/jpeg` rather than letting it guess.
 - **Cache pruning**: on startup, `prune_orphaned_cache()` deletes `~/.alembic/cache/<session_id>/` for
   sessions that no longer exist - a schema bump wipes the rows but not the files.
 - **Schema versioning**: `AppMetadata` table stores `schema_version`. When `CURRENT_SCHEMA_VERSION` (in `app.py`) changes, all sessions and embeddings are wiped on startup to avoid incompatible data.

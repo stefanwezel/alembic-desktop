@@ -1,7 +1,9 @@
+import json
 import logging
 import os
 import socket
 import sys
+import urllib.request
 
 # When running as a PyInstaller bundle, set up paths
 if getattr(sys, 'frozen', False):
@@ -52,7 +54,7 @@ def listening_sockets():
     return sockets
 
 
-def already_serving():
+def already_serving(port=PORT):
     """Whether something is listening on the API port already.
 
     A bind alone is no answer on Windows: SO_REUSEADDR there lets a second socket take a port that
@@ -63,11 +65,31 @@ def already_serving():
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.settimeout(0.25)
-        return probe.connect_ex(('127.0.0.1', PORT)) == 0
+        return probe.connect_ex(('127.0.0.1', port)) == 0
+
+
+def is_alembic(port=PORT, timeout=3.0):
+    """Whether the server listening on `port` is an Alembic sidecar - one a crashed app left behind.
+
+    3001 is a popular port for development servers as well, and stepping aside for one of those
+    leaves the window talking to a program that has never heard of Alembic.
+    """
+    # No proxy: with HTTP_PROXY set, urllib would send even a request for the loopback through it.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(f'http://127.0.0.1:{port}/', timeout=timeout) as response:
+            return json.load(response).get('message') == 'Alembic API'
+    except Exception:  # refused, silent, not HTTP, not JSON, not an object: none of that is Alembic
+        return False
 
 
 def main():
     if already_serving():
+        if not is_alembic():
+            # Nothing this process can do about it, but the log says what is wrong instead of the
+            # window waiting minutes on an API that is never going to answer.
+            logging.error(f"Port {PORT} is taken by another program, so the Alembic API cannot start.")
+            sys.exit(1)
         # The window that started us reaches that server and works off the same database, so this is
         # a clean no-op rather than an error to report.
         logging.warning(f"Something is already serving on port {PORT}; not starting a second server.")

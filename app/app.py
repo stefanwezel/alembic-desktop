@@ -80,15 +80,36 @@ db = SQLAlchemy(app)
 # (http://tauri.localhost on Windows) and the dev server http://localhost:8080.
 LOCAL_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "::1", "tauri.localhost"}
 
+# Names a request for this API can be addressed to. Anything else in the Host header is a website
+# that pointed its own name at the loopback address (DNS rebinding).
+LOCAL_API_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
 
 def is_local_origin(origin: str) -> bool:
     """Whether a browser Origin header belongs to this app rather than to some website."""
-    if origin in ("", "null"):
-        return True  # not a browser request at all, or a webview that sends no origin of its own
-    parsed = urlparse(origin)
+    if origin == "":
+        return True  # not a browser request, or a plain GET whose answer a website cannot read
+    if origin == "null":
+        # No webview of the app's sends it; a website's sandboxed iframe does, as does any request
+        # that went through a cross-site redirect. Let it through and any page can use the API.
+        return False
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return False  # malformed, so not one of the app's own pages
     if parsed.scheme not in ("http", "https"):
         return True  # tauri:// and the other custom schemes are the shell itself
     return parsed.hostname in LOCAL_ORIGIN_HOSTS
+
+
+def is_local_host(host: str) -> bool:
+    """Whether a Host header names the loopback, as every request from the app and the shell does."""
+    if host == "":
+        return True  # an HTTP/1.0 client; every browser sends the header
+    try:
+        return urlparse(f"//{host}").hostname in LOCAL_API_HOSTS
+    except ValueError:
+        return False
 
 
 @app.before_request
@@ -103,6 +124,13 @@ def reject_foreign_origins():
     if not is_local_origin(origin):
         logging.warning(f"Rejected {request.method} {request.path} from origin {origin}.")
         return jsonify({"error": "foreign_origin"}), 403
+
+    # A same-origin GET carries no Origin at all, so a website that rebinds its own name to
+    # 127.0.0.1 passes the check above. The name it used is still in the Host header.
+    host = request.headers.get("Host", "")
+    if not is_local_host(host):
+        logging.warning(f"Rejected {request.method} {request.path} addressed to host {host}.")
+        return jsonify({"error": "foreign_host"}), 403
 
 
 class User(db.Model):
@@ -464,7 +492,10 @@ def serve_image():
         logging.error(f"Cached {version} for {img_id} is missing from {path}.")
         return jsonify({"error": "image_file_missing"}), 404
 
-    return send_file(path)
+    # Every version is a JPEG: the source itself, or a copy written as one. Stated rather than
+    # guessed, because on Windows mimetypes takes the type of .jpg from the registry, where other
+    # software can have put image/pjpeg or worse - and the frontend shows nothing that isn't an image.
+    return send_file(path, mimetype="image/jpeg")
 
 
 def _next_pair_response(session_id: str, id_left: str, id_right: str):
