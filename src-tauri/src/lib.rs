@@ -33,6 +33,11 @@ const SHOW_WINDOW_AFTER: Duration = Duration::from_secs(10);
 /// longer than it sounds. The frontend gives up at the same five minutes.
 const READY_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// How long one readiness probe may take. Without a bound, a port held by something that accepts the
+/// connection and never answers would stall the startup check on its very first request - and with
+/// it the window, which then never appears at all.
+const READY_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// A client for the local API.
 ///
 /// `no_proxy`, because a machine with HTTP_PROXY or ALL_PROXY set (and no matching no_proxy entry)
@@ -139,17 +144,25 @@ async fn log_sidecar_output(
     exited.store(true, Ordering::SeqCst);
 }
 
+/// Whether the API at `base` answers its health check.
+async fn api_ready(client: &reqwest::Client, base: &str) -> bool {
+    matches!(
+        client
+            .get(format!("{base}/"))
+            .timeout(READY_PROBE_TIMEOUT)
+            .send()
+            .await,
+        Ok(response) if response.status().is_success()
+    )
+}
+
 async fn show_window_when_ready(window: tauri::WebviewWindow) {
     let client = local_client();
     let started = Instant::now();
     let mut shown = false;
 
     loop {
-        let ready = matches!(
-            client.get(format!("{API_BASE}/")).send().await,
-            Ok(response) if response.status().is_success()
-        );
-        if ready {
+        if api_ready(&client, API_BASE).await {
             println!("API ready after {:?}, showing window", started.elapsed());
             // The page may already have loaded and failed to reach the API by now.
             let _ = window.eval("if (typeof loadOverview === 'function') loadOverview();");
@@ -267,4 +280,45 @@ pub fn run() {
             shutdown_sidecar(app_handle);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// Runs the probe against `listener`, with a deadline well past the probe's own, so that a
+    /// probe that waits forever fails the test instead of hanging it.
+    fn probe(listener: &TcpListener) -> Option<bool> {
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tauri::async_runtime::block_on(async {
+            tokio::time::timeout(READY_PROBE_TIMEOUT * 5, api_ready(&local_client(), &base))
+                .await
+                .ok()
+        })
+    }
+
+    #[test]
+    fn readiness_probe_gives_up_on_a_server_that_never_answers() {
+        // The backlog completes the connection; nothing ever reads or replies.
+        let silent = TcpListener::bind("127.0.0.1:0").unwrap();
+
+        assert_eq!(probe(&silent), Some(false));
+    }
+
+    #[test]
+    fn readiness_probe_accepts_a_server_that_answers() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let server = listener.try_clone().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = server.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+        });
+
+        assert_eq!(probe(&listener), Some(true));
+    }
 }

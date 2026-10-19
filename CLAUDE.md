@@ -48,7 +48,8 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
   comes from the shell plugin's `Terminated` event - Windows offers nothing cheap to ask.
 - **One instance at a time**: `tauri-plugin-single-instance` is registered before every other plugin,
   so a second launch hands over to the running window before it can spawn a sidecar of its own. The
-  sidecar also refuses to start when something already answers on port 3001 (`already_serving()`).
+  sidecar also steps aside when an Alembic sidecar already answers on port 3001 (`already_serving()`,
+  `is_alembic()`), and exits with an error when some other program holds the port.
   A failed bind is no guard there: on Windows `SO_REUSEADDR` means "bind a port another socket is
   already listening on", so two sidecars would share the port and the database between them.
 - **Windows code pages**: cv2 hands paths to the C runtime as bytes, which Windows reads back in the
