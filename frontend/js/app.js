@@ -780,6 +780,9 @@ function upgradeToDisplay(img, side, imgId) {
   const pre = new Image();
   pre.onload = () => {
     if (currentRenderIds[side] !== imgId) return;
+    // The swap below fires load again, which would start the upgrade over - endlessly, about
+    // fourteen thousand times a second, for as long as the pair stays on screen.
+    img.onload = null;
     img.src = pre.src;
   };
   pre.src = `${API_BASE}/serve_image?img_id=${imgId}&version=display`;
