@@ -56,7 +56,7 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
   process code page, so a file named outside it (Greek, Cyrillic, CJK) cannot be opened - and a write
   can even appear to succeed into a file named after the mis-read bytes. Neither side of the cache
   goes through a cv2 path any more: `utils.save_image` encodes in memory and writes with `open()`,
-  and `utils.load_generic_image` falls back to Pillow when `imread` comes back empty.
+  and `utils.load_generic_image` reads the bytes from Python and decodes them with `cv2.imdecode`.
 - **Cache pruning**: on startup, `prune_orphaned_cache()` deletes `~/.alembic/cache/<session_id>/` for
   sessions that no longer exist - a schema bump wipes the rows but not the files.
 - **Schema versioning**: `AppMetadata` table stores `schema_version`. When `CURRENT_SCHEMA_VERSION` (in `app.py`) changes, all sessions and embeddings are wiped on startup to avoid incompatible data.

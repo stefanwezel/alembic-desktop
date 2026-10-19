@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import time
 
@@ -73,6 +74,42 @@ def test_prepare_image_handles_names_outside_the_windows_code_page(tmpdir, filen
     assert os.path.exists(display_path), f"Output image {display_path} not created."
     assert os.path.exists(thumbnail_path), f"Output image {thumbnail_path} not created."
     assert os.path.exists(preview_path), f"Output image {preview_path} not created."
+
+
+@pytest.mark.parametrize(
+    "source, filename",
+    [(os.path.join("dngs", "DSC00015.dng"), "Ωμέγα.dng"), (os.path.join("jpgs", "DSC02648.JPG"), "日本.jpg")],
+)
+def test_prepare_image_reads_raw_and_jpeg_files_named_outside_the_windows_code_page(tmpdir, source, filename):
+    """rawpy and the JPEG path open the source file themselves rather than through cv2; this is the
+    check that they cope with such a name too, which only Windows CI can really put to the test.
+    """
+    input_path = os.path.join(tmpdir, filename)
+    shutil.copyfile(os.path.join(FILES_DIR, source), input_path)
+
+    display_path, thumbnail_path, preview_path, image = utils.prepare_image(input_path, output_dir=str(tmpdir))
+
+    assert image.ndim == 3 and image.shape[-1] == 3
+    for path in (display_path, thumbnail_path, preview_path):
+        assert os.path.exists(path), f"Output image {path} not created."
+
+
+@pytest.mark.parametrize("filename", ["scan16.png", "scan16.tif"])
+def test_16_bit_greyscale_keeps_its_tone_where_cv2_cannot_open_the_path(tmpdir, filename, monkeypatch):
+    """cv2.imread returns None on Windows for a name outside the process code page. The Pillow
+    fallback that took over then clipped a 16-bit greyscale image to solid white (regression).
+    """
+    import cv2
+
+    path = os.path.join(tmpdir, filename)
+    cv2.imwrite(path, np.full((40, 60), 32768, dtype=np.uint16))  # mid-grey at 16 bits
+    monkeypatch.setattr(cv2, "imread", lambda *args, **kwargs: None)  # what Windows does with such a name
+
+    image = utils.load_generic_image(path)
+
+    assert image.shape == (40, 60, 3)
+    assert image.dtype == np.uint8
+    assert tuple(image[0, 0]) == (128, 128, 128)
 
 
 def test_raw_extensions_route_to_rawpy():

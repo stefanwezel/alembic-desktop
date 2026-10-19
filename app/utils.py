@@ -126,9 +126,17 @@ def load_raw(img_path: str) -> np.ndarray:
 
 
 def load_generic_image(img_path: str) -> np.ndarray:
-    """Decode PNG/TIFF (and anything else OpenCV or Pillow understands) to an 8-bit BGR array."""
-    image = cv2.imread(img_path, cv2.IMREAD_COLOR)
-    if image is None:  # cv2 returns None rather than raising, e.g. for non-ASCII paths on Windows
+    """Decode PNG/TIFF (and anything else OpenCV or Pillow understands) to an 8-bit BGR array.
+
+    Read from Python and decoded in memory rather than through cv2.imread, which hands the path to
+    the C runtime in the process code page and so cannot open a name outside it on Windows (see
+    save_image). The decoder is the same one, which matters for more than the name: the Pillow
+    fallback used to take over for such files, and its convert("RGB") clips a 16-bit greyscale scan
+    to solid white where cv2 scales it down.
+    """
+    data = np.fromfile(img_path, dtype=np.uint8)
+    image = cv2.imdecode(data, cv2.IMREAD_COLOR) if data.size else None
+    if image is None:  # a format this cv2 build cannot decode; Pillow may still know it
         with Image.open(img_path) as pil_image:
             image = cv2.cvtColor(np.array(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
     return image
