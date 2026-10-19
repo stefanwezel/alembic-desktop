@@ -7,6 +7,7 @@ Regression cover for three defects:
 """
 
 import io
+import mimetypes
 import os
 import sys
 import tempfile
@@ -455,3 +456,27 @@ def test_a_missing_cached_file_is_reported_as_not_found(client, tmp_path):
 
     assert response.status_code == 404
     assert response.get_json()["error"] == "image_file_missing"
+
+
+def test_images_are_served_as_jpeg_whatever_the_system_mime_table_says(client, tmp_path, monkeypatch):
+    """On Windows, Python's mimetypes takes the type of .jpg from the registry, where other software
+    can have put something else (image/pjpeg is the classic). The frontend only shows image/jpeg,
+    so every preview would fail - and every copy served here is a JPEG anyway.
+    """
+    guess_type = mimetypes.guess_type
+
+    def registry_says_pjpeg(url, strict=True):
+        if str(url).lower().endswith((".jpg", ".jpeg")):
+            return "image/pjpeg", None
+        return guess_type(url, strict)
+
+    monkeypatch.setattr(mimetypes, "guess_type", registry_says_pjpeg)
+    session_id = create_session(client, tmp_path, ["img0.jpg", "img1.png"])
+    opened = client.get(f"/open_session?session_id={session_id}").get_json()
+
+    for image_id in (opened["img_id_left"], opened["img_id_right"]):
+        for version in ("thumbnail", "preview", "display"):
+            response = client.get(f"/serve_image?img_id={image_id}&version={version}")
+            response.close()  # send_file holds the image open until then, which Windows minds
+            assert response.status_code == 200
+            assert response.headers["Content-Type"] == "image/jpeg", (version, image_id)

@@ -492,7 +492,10 @@ def serve_image():
         logging.error(f"Cached {version} for {img_id} is missing from {path}.")
         return jsonify({"error": "image_file_missing"}), 404
 
-    return send_file(path)
+    # Every version is a JPEG: the source itself, or a copy written as one. Stated rather than
+    # guessed, because on Windows mimetypes takes the type of .jpg from the registry, where other
+    # software can have put image/pjpeg or worse - and the frontend shows nothing that isn't an image.
+    return send_file(path, mimetype="image/jpeg")
 
 
 def _next_pair_response(session_id: str, id_left: str, id_right: str):

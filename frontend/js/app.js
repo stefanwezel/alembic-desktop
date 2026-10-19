@@ -716,7 +716,7 @@ async function fetchPreviewEntry(imgId) {
     return hit;
   }
   const res = await fetch(`${API_BASE}/serve_image?img_id=${imgId}&version=preview`);
-  if (!res.ok || res.headers.get("Content-Type") !== "image/jpeg") {
+  if (!res.ok || !(res.headers.get("Content-Type") || "").startsWith("image/")) {
     throw new Error("Invalid response or no image found");
   }
   return cachePut(imgId, await res.blob());
