@@ -28,7 +28,10 @@ Images go through progressive loading: thumbnail → preview → display. RAW fo
   in a plain browser - a full-resolution export does not fit in the webview's memory.
 - **Local-only API**: the sidecar listens on a fixed port, so `reject_foreign_origins` turns away any
   request carrying an `Origin` that is not the app itself, and every destructive route is a POST (a GET
-  can be fired from a cross-site `<img>`, which sends no Origin at all).
+  can be fired from a cross-site `<img>`, which sends no Origin at all). `Origin: null` counts as foreign:
+  no webview of the app's sends it (WebKitGTK sends `tauri://localhost`, WebView2 `http://tauri.localhost`),
+  but a website's sandboxed iframe does. A `Host` other than a loopback name is refused too - that is
+  what a DNS-rebinding page sends, and its same-origin GETs carry no Origin.
 - **WSGI server**: `run_server.py` serves the app with waitress, on both loopback families
   (`127.0.0.1` and `[::1]` - Windows resolves `localhost` to the v6 address first). Not the Werkzeug
   development server: it speaks HTTP/1.0 and hangs up after every response, and Chromium (the Windows

@@ -362,16 +362,22 @@ def test_prefetch_returns_nulls_once_nothing_is_left(client, tmp_path):
     assert prefetched == {"next_if_stays_left": None, "next_if_stays_right": None}
 
 
-@pytest.mark.parametrize("origin", ["http://localhost:8080", "tauri://localhost", "http://tauri.localhost", "null", ""])
+@pytest.mark.parametrize("origin", ["http://localhost:8080", "tauri://localhost", "http://tauri.localhost", ""])
 def test_the_app_s_own_origins_are_served(client, origin):
     response = client.get("/overview", headers={"Origin": origin} if origin else {})
 
     assert response.status_code == 200
 
 
-@pytest.mark.parametrize("origin", ["https://example.com", "http://evil.test:8080", "http://localhost.evil.com"])
+@pytest.mark.parametrize(
+    "origin", ["https://example.com", "http://evil.test:8080", "http://localhost.evil.com", "null", "http://[::1"]
+)
 def test_websites_cannot_reach_the_api(client, tmp_path, origin):
-    """A page the user has open must not be able to list sessions or delete one."""
+    """A page the user has open must not be able to list sessions or delete one.
+
+    "null" included: it is what a website's sandboxed iframe sends, and what any request carries
+    after a cross-site redirect. None of the app's webviews send it (regression).
+    """
     session_id = create_session(client, tmp_path, ["img0.jpg"])
 
     assert client.get("/overview", headers={"Origin": origin}).status_code == 403
@@ -380,6 +386,30 @@ def test_websites_cannot_reach_the_api(client, tmp_path, origin):
 
     # and the session is still there afterwards
     assert client.post(f"/drop_session/{session_id}").status_code == 200
+
+
+@pytest.mark.parametrize("host", ["localhost:3001", "127.0.0.1:3001", "[::1]:3001"])
+def test_requests_addressed_to_the_loopback_are_served(client, host):
+    assert client.get("/overview", headers={"Host": host}).status_code == 200
+
+
+def test_requests_addressed_to_another_host_are_refused(client, tmp_path):
+    """DNS rebinding: a website points its own name at 127.0.0.1 and calls the API as same-origin.
+
+    A same-origin GET carries no Origin header for the check above to see, but the Host header still
+    names the website.
+    """
+    session_id = create_session(client, tmp_path, ["img0.jpg"])
+    headers = {"Host": "rebound.example:3001"}
+
+    assert client.get("/overview", headers=headers).status_code == 403
+    assert client.get(f"/open_session?session_id={session_id}", headers=headers).status_code == 403
+
+
+# Checked directly: the test client cannot even build a request around a malformed Host.
+@pytest.mark.parametrize("host", ["[::1", "localhost.rebound.example:3001", "127.0.0.1.rebound.example"])
+def test_malformed_and_lookalike_hosts_are_not_local(host):
+    assert not alembic_app.is_local_host(host)
 
 
 def test_session_deletion_is_not_reachable_by_a_plain_get(client, tmp_path):
